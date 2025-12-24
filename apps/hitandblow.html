@@ -298,7 +298,6 @@
             document.getElementById('guessInput').disabled = false;
             document.getElementById('guessBtn').disabled = false;
             document.getElementById('message').innerHTML = '';
-            console.log('Secret number:', secretNumber); // デバッグ用（本番では削除）
         }
         
         // 表示を更新
@@ -407,6 +406,9 @@
             document.getElementById('gameStatus').textContent = 'ゲーム中...';
         }
         
+        // ゲームを開始
+        initGame();
+        
         // Enterキーで推測
         document.getElementById('guessInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && !gameOver) {
@@ -418,9 +420,6 @@
         document.getElementById('guessInput').addEventListener('input', (e) => {
             e.target.value = e.target.value.replace(/[^0-9]/g, '');
         });
-        
-        // ゲームを開始
-        initGame();
     </script>
 </body>
 </html>
