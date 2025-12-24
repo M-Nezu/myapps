@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tokyo GeoGuessr (GAS Ver)</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; }
+        
+        #pano { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; background: #f0f0f0; }
+
+        /* 右下のマップ */
+        #map-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 320px;
+            height: 240px;
+            z-index: 10;
+            border: 3px solid white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: width 0.3s, height 0.3s;
+            background: #eee;
+        }
+        #map-container.expanded { 
+            width: 500px; 
+            height: 400px; 
+        }
+        #map { width: 100%; height: 100%; }
+
+        /* マップ縮小ボタン */
+        .close-map-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 36px;
+            height: 36px;
+            background: #ff5252;
+            color: white;
+            border: 2px solid white;
+            border-radius: 50%;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            line-height: 1;
+            padding: 0;
+        }
+        .close-map-btn:hover { background: #d32f2f; }
+        #map-container.expanded .close-map-btn { display: flex; }
+
+        /* 左上の情報ウィンドウ */
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 20;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 8px;
+            pointer-events: none;
+            width: 30vw;
+            max-width: 30vw;
+            max-height: 15vh;
+            padding: 1.5vmin;
+            font-size: 1.5vmin;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+        }
+        #ui-layer h1 { 
+            margin: 0 0 0.8vmin 0; 
+            font-size: 1.8vmin; 
+            border-bottom: 1px solid #555; 
+            padding-bottom: 0.5vmin;
+            white-space: nowrap;
+        }
+        .stat-row { 
+            display: flex; 
+            justify-content: space-between; 
+            margin-bottom: 0.3vmin;
+            line-height: 1.2;
+        }
+        .info-text {
+            margin-top: 0.8vmin; 
+            font-size: 1.2vmin; 
+            color: #aaa;
+            line-height: 1.2;
+        }
+        .stat-val { font-weight: bold; color: #4CAF50; }
+        .stat-err { color: #ff5252; }
+
+        /* 操作ボタン */
+        #controls {
+            position: absolute;
+            bottom: 270px; /* 通常時の位置 (map height 240 + bottom 20 + gap 10) */
+            right: 20px;
+            z-index: 20;
+            text-align: right;
+            transition: bottom 0.3s; /* マップ拡大に合わせて滑らかに動くようにする */
+        }
+        /* マップが拡大されたときの位置調整 (map height 400 + bottom 20 + gap 10) */
+        #map-container.expanded ~ #controls {
+            bottom: 430px;
+        }
+
+        button.guess-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            font-weight: bold;
+        }
+        button.guess-btn:hover { background: #1976D2; }
+
+        /* メッセージ表示 */
+        #message-toast {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            color: #333;
+            padding: 20px 30px;
+            z-index: 30;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            font-size: 1.2rem;
+            border: 2px solid #333;
+        }
+
+        /* APIキー入力モーダル */
+        #api-key-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        .modal-content h2 { margin-top: 0; color: #333; }
+        .modal-content input {
+            width: 80%;
+            padding: 10px;
+            margin: 15px 0;
+            font-size: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .modal-content button {
+            background: #4CAF50;
+            width: 50%;
+            padding: 10px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .note { font-size: 0.9rem; color: #666; margin-bottom: 15px; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <div id="api-key-modal">
+        <div class="modal-content">
+            <h2>APIキーが必要です</h2>
+            <p>Google Maps APIキーを入力してゲームを開始してください。</p>
+            <div class="note">
+                ※ Maps JavaScript API が有効になっている必要があります。<br>
+                ※ 入力されたキーはブラウザに保存され、次回から自動で使用されます。
+            </div>
+            <input type="text" id="api-key-input" placeholder="AIzaSy...">
+            <br>
+            <button onclick="submitApiKey()">ゲーム開始</button>
+        </div>
+    </div>
+
+    <div id="pano"></div>
+
+    <div id="ui-layer">
+        <h1>東京 30km圏内</h1>
+        <div class="stat-row">Round: <span class="stat-val" id="round-disp">1</span></div>
+        <div class="stat-row">成功数: <span class="stat-val" id="success-disp">0</span></div>
+        <div class="stat-row">失敗数: <span class="stat-val stat-err" id="fail-disp">0</span></div>
+        <div class="info-text">
+            現在地を推測してください。<br>誤差30m以内でクリア！
+        </div>
+    </div>
+
+    <!-- マップコンテナとコントロール -->
+    <div id="map-container">
+        <button class="close-map-btn" onclick="closeMap(event)">×</button>
+        <div id="map"></div>
+    </div>
+
+    <div id="controls">
+        <button class="guess-btn" id="guess-btn" onclick="checkGuess()">GUESS !</button>
+    </div>
+
+    <div id="message-toast"></div>
+
+    <script>
+        // ==========================================
+        //  設定: APIキー (初期値は空)
+        // ==========================================
+        var googleMapsApiKey = "";
+        // ==========================================
+
+        var TOKYO_CENTER = { lat: 35.681236, lng: 139.767125 };
+        var RADIUS_KM = 30;
+        
+        var round = 1;
+        var successCount = 0;
+        var failCount = 0;
+        var map, panorama, svService, guessMarker;
+        var mapContainer = document.getElementById("map-container");
+
+        // GAS対策: DOMContentLoadedが発火しない場合があるのでwindow.onloadも考慮
+        window.onload = function() {
+            // ローカルストレージからAPIキー取得を試みる
+            var savedKey = localStorage.getItem('googleMapsApiKey');
+
+            if (savedKey && savedKey.trim() !== "") {
+                // キーが見つかった場合、それを使用
+                googleMapsApiKey = savedKey;
+                loadGoogleMapsScript(googleMapsApiKey);
+            } else {
+                // キーがない場合、ダイアログを表示
+                document.getElementById('api-key-modal').style.display = 'flex';
+            }
+        };
+        
+        // Google Maps APIの認証失敗時に呼ばれるグローバル関数
+        window.gm_authFailure = function() {
+            alert("Google Maps APIの認証に失敗しました。\n保存されたキーが無効な可能性があります。\nキーを削除してリロードします。");
+            // 間違ったキーが保存されている場合は削除してリセット
+            localStorage.removeItem('googleMapsApiKey');
+            location.reload();
+        };
+
+        function submitApiKey() {
+            var input = document.getElementById('api-key-input');
+            var key = input.value.trim();
+            if (key) {
+                googleMapsApiKey = key;
+                // ローカルストレージに保存
+                localStorage.setItem('googleMapsApiKey', key);
+
+                document.getElementById('api-key-modal').style.display = 'none';
+                loadGoogleMapsScript(key);
+            } else {
+                alert("APIキーを入力してください。");
+            }
+        }
+
+        function loadGoogleMapsScript(key) {
+            var script = document.createElement('script');
+            // 【重要】GASでSyntaxErrorにならないよう、バッククォートを使わず文字列結合にする
+            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&callback=initGame&v=weekly';
+            script.async = true;
+            script.defer = true;
+            script.onerror = function() {
+                // ロード失敗時のみダイアログを再表示
+                alert("Google Maps APIスクリプトの読み込みに失敗しました。\nネットワーク接続やセキュリティ設定を確認してください。");
+                document.getElementById('api-key-modal').style.display = 'flex';
+            };
+            document.head.appendChild(script);
+        }
+
+        // コールバック関数: APIロード後に呼ばれる
+        window.initGame = function() {
+            // 【重要】APIがロードされ地図初期化が始まったら、強制的にダイアログを消す
+            document.getElementById('api-key-modal').style.display = 'none';
+
+            svService = new google.maps.StreetViewService();
+
+            panorama = new google.maps.StreetViewPanorama(
+                document.getElementById("pano"), {
+                    pov: { heading: 0, pitch: 0 },
+                    linksControl: true,
+                    clickToGo: true,
+                    addressControl: false,
+                    showRoadLabels: false,
+                    fullscreenControl: false,
+                    motionTracking: false,
+                    motionTrackingControl: false
+                }
+            );
+
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: TOKYO_CENTER,
+                zoom: 10,
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: false,
+                clickableIcons: false,
+                gestureHandling: 'greedy'
+            });
+
+            map.addListener("click", function(e) {
+                if (guessMarker) {
+                    guessMarker.setPosition(e.latLng);
+                } else {
+                    guessMarker = new google.maps.Marker({
+                        position: e.latLng,
+                        map: map,
+                        label: "?"
+                    });
+                }
+                mapContainer.classList.add('expanded');
+            });
+
+            document.addEventListener('click', function(event) {
+                if (!mapContainer.contains(event.target) && mapContainer.classList.contains('expanded')) {
+                    mapContainer.classList.remove('expanded');
+                }
+            });
+
+            startNewRound();
+        };
+
+        window.closeMap = function(event) {
+            event.stopPropagation();
+            mapContainer.classList.remove('expanded');
+        };
+
+        function startNewRound() {
+            showToast("場所を検索中...", false);
+            findRandomStreetView();
+        }
+
+        function findRandomStreetView() {
+            var randomLoc = getRandomLatLngInTokyo(RADIUS_KM);
+
+            svService.getPanorama({
+                location: randomLoc,
+                radius: 100,
+                source: google.maps.StreetViewSource.OUTDOOR
+            }).then(function(result) {
+                var location = result.data.location;
+                panorama.setPano(location.pano);
+                panorama.setPov({ heading: 0, pitch: 0 });
+                panorama.setVisible(true);
+
+                if (guessMarker) guessMarker.setMap(null);
+                guessMarker = null;
+                
+                map.setCenter(TOKYO_CENTER);
+                map.setZoom(10);
+                
+                hideToast();
+
+            }).catch(function() {
+                console.log("Retrying SV search...");
+                findRandomStreetView();
+            });
+        }
+
+        window.checkGuess = function() {
+            if (!guessMarker) {
+                alert("マップをクリックして現在地を予想してください！");
+                return;
+            }
+
+            var currentPanoPos = panorama.getPosition();
+            var guessPos = guessMarker.getPosition();
+
+            var distanceKm = calculateDistance(
+                currentPanoPos.lat(), currentPanoPos.lng(),
+                guessPos.lat(), guessPos.lng()
+            );
+            var distanceMeters = Math.round(distanceKm * 1000);
+
+            if (distanceMeters <= 30) {
+                successCount++;
+                document.getElementById("success-disp").innerText = successCount;
+                
+                showToast("🎉 正解！<br>誤差: " + distanceMeters + "m<br>次の場所へ進みます", true);
+                mapContainer.classList.remove('expanded');
+
+                setTimeout(function() {
+                    round++;
+                    document.getElementById("round-disp").innerText = round;
+                    startNewRound();
+                }, 2000);
+
+            } else {
+                failCount++;
+                document.getElementById("fail-disp").innerText = failCount;
+                
+                var msg = "惜しい！<br>正解との距離: <b>" + distanceMeters + "m</b><br>もっと近づいてください。";
+                if(distanceMeters > 1000) {
+                    msg = "全然違います！<br>正解との距離: <b>" + (distanceKm).toFixed(1) + "km</b><br>諦めずに探してください。";
+                }
+                showToast(msg, true);
+                
+                setTimeout(function() {
+                    hideToast();
+                }, 3000);
+            }
+        };
+
+        function getRandomLatLngInTokyo(radiusKm) {
+            var r = radiusKm / 111.32; 
+            var y0 = TOKYO_CENTER.lat;
+            var x0 = TOKYO_CENTER.lng;
+            
+            var u = Math.random();
+            var v = Math.random();
+            var w = r * Math.sqrt(u);
+            var t = 2 * Math.PI * v;
+            var x = w * Math.cos(t);
+            var y = w * Math.sin(t);
+
+            var newLat = y + y0;
+            var newLng = x / Math.cos(y0 * Math.PI / 180) + x0;
+
+            return { lat: newLat, lng: newLng };
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            var R = 6371; 
+            var dLat = deg2rad(lat2 - lat1);
+            var dLon = deg2rad(lon2 - lon1);
+            var a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2); 
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+            return R * c;
+        }
+
+        function deg2rad(deg) {
+            return deg * (Math.PI/180);
+        }
+
+        function showToast(html, autoHide) {
+            var toast = document.getElementById("message-toast");
+            toast.innerHTML = html;
+            toast.style.display = "block";
+        }
+        function hideToast() {
+            document.getElementById("message-toast").style.display = "none";
+        }
+    </script>
+</body>
+</html>

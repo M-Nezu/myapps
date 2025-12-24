@@ -69,3 +69,5 @@ self.addEventListener('activate', (event) => {
   );
   self.clients.claim();
 });
+
+// version 1.0.0
