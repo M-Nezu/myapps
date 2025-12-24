@@ -222,19 +222,24 @@
         }
         
         // Copy to clipboard
-        function copyToClipboard() {
-            notepad.select();
-            document.execCommand('copy');
-            
-            // Show feedback
-            const originalText = autoSaveElement.textContent;
-            autoSaveElement.textContent = '✓ コピーしました';
-            autoSaveElement.style.color = '#2196F3';
-            
-            setTimeout(() => {
-                autoSaveElement.textContent = originalText;
-                autoSaveElement.style.color = '#4caf50';
-            }, 2000);
+        async function copyToClipboard() {
+            try {
+                await navigator.clipboard.writeText(notepad.value);
+                
+                // Show feedback
+                const originalText = autoSaveElement.textContent;
+                autoSaveElement.textContent = '✓ コピーしました';
+                autoSaveElement.style.color = '#2196F3';
+                
+                setTimeout(() => {
+                    autoSaveElement.textContent = originalText;
+                    autoSaveElement.style.color = '#4caf50';
+                }, 2000);
+            } catch (err) {
+                console.error('コピーに失敗しました:', err);
+                autoSaveElement.textContent = '✗ コピー失敗';
+                autoSaveElement.style.color = '#f44336';
+            }
         }
         
         // Clear note
