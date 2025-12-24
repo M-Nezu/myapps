@@ -181,9 +181,74 @@
             font-size: 1rem;
         }
         .note { font-size: 0.9rem; color: #666; margin-bottom: 15px; text-align: left; }
+
+        /* 設定ボタン */
+        #settings-btn {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            z-index: 40;
+            background: rgba(0,0,0,0.75);
+            color: white;
+            border: none;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            font-size: 22px;
+            cursor: pointer;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+        }
+        #settings-btn:hover { background: rgba(0,0,0,0.9); }
+
+        /* 設定モーダル */
+        #settings-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75);
+            z-index: 120;
+            align-items: center;
+            justify-content: center;
+        }
+        #settings-modal .settings-content {
+            background: white;
+            padding: 20px 24px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 420px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            color: #333;
+        }
+        #settings-modal h3 { margin: 0 0 12px; }
+        .settings-field { margin-bottom: 14px; }
+        .settings-field label { display: block; font-weight: bold; margin-bottom: 6px; }
+        .settings-field input {
+            width: 100%;
+            padding: 10px;
+            font-size: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+        .settings-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .settings-actions button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .settings-cancel { background: #e0e0e0; color: #333; }
+        .settings-apply { background: #1976D2; color: white; }
     </style>
 </head>
 <body>
+
+    <button id="settings-btn" aria-label="設定">⚙️</button>
 
     <div id="api-key-modal">
         <div class="modal-content">
@@ -223,6 +288,24 @@
 
     <div id="message-toast"></div>
 
+    <div id="settings-modal">
+        <div class="settings-content">
+            <h3>設定</h3>
+            <div class="settings-field">
+                <label for="place-input">地名</label>
+                <input type="text" id="place-input" placeholder="例: 東京駅" autocomplete="off">
+            </div>
+            <div class="settings-field">
+                <label for="radius-input">出題範囲の半径 (km)</label>
+                <input type="number" id="radius-input" min="1" step="0.1" value="30">
+            </div>
+            <div class="settings-actions">
+                <button class="settings-cancel" onclick="closeSettings()">キャンセル</button>
+                <button class="settings-apply" onclick="applySettings()">変更</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ==========================================
         //  設定: APIキー (初期値は空)
@@ -232,12 +315,15 @@
 
         var TOKYO_CENTER = { lat: 35.681236, lng: 139.767125 };
         var RADIUS_KM = 30;
+        var BASE_NAME = "東京";
         
         var round = 1;
         var successCount = 0;
         var failCount = 0;
-        var map, panorama, svService, guessMarker;
+        var map, panorama, svService, guessMarker, geocoder;
         var mapContainer = document.getElementById("map-container");
+
+        var headerTitle = document.querySelector('#ui-layer h1');
 
         // GAS対策: DOMContentLoadedが発火しない場合があるのでwindow.onloadも考慮
         window.onload = function() {
@@ -298,6 +384,7 @@
             document.getElementById('api-key-modal').style.display = 'none';
 
             svService = new google.maps.StreetViewService();
+            geocoder = new google.maps.Geocoder();
 
             panorama = new google.maps.StreetViewPanorama(
                 document.getElementById("pano"), {
@@ -321,6 +408,8 @@
                 clickableIcons: false,
                 gestureHandling: 'greedy'
             });
+
+            updateHeader();
 
             map.addListener("click", function(e) {
                 if (guessMarker) {
@@ -354,6 +443,25 @@
             findRandomStreetView();
         }
 
+        function resetGame() {
+            round = 1;
+            successCount = 0;
+            failCount = 0;
+            document.getElementById("round-disp").innerText = round;
+            document.getElementById("success-disp").innerText = successCount;
+            document.getElementById("fail-disp").innerText = failCount;
+            if (guessMarker) {
+                guessMarker.setMap(null);
+                guessMarker = null;
+            }
+            if (map) {
+                map.setCenter(TOKYO_CENTER);
+                map.setZoom(10);
+            }
+            updateHeader();
+            startNewRound();
+        }
+
         function findRandomStreetView() {
             var randomLoc = getRandomLatLngInTokyo(RADIUS_KM);
 
@@ -379,6 +487,11 @@
                 console.log("Retrying SV search...");
                 findRandomStreetView();
             });
+        }
+
+        function updateHeader() {
+            var radiusText = RADIUS_KM % 1 === 0 ? RADIUS_KM : RADIUS_KM.toFixed(1);
+            headerTitle.textContent = BASE_NAME + " " + radiusText + "km圏内";
         }
 
         window.checkGuess = function() {
@@ -466,6 +579,48 @@
         function hideToast() {
             document.getElementById("message-toast").style.display = "none";
         }
+
+        window.openSettings = function() {
+            document.getElementById('place-input').value = BASE_NAME;
+            document.getElementById('radius-input').value = RADIUS_KM;
+            document.getElementById('settings-modal').style.display = 'flex';
+        };
+
+        window.closeSettings = function() {
+            document.getElementById('settings-modal').style.display = 'none';
+        };
+
+        window.applySettings = function() {
+            var place = document.getElementById('place-input').value.trim();
+            var radiusVal = parseFloat(document.getElementById('radius-input').value);
+            if (!place) {
+                alert('地名を入力してください');
+                return;
+            }
+            if (!(radiusVal > 0)) {
+                alert('半径は正の数値を入力してください');
+                return;
+            }
+            if (!geocoder) {
+                alert('Google Mapsの初期化中です。少し待ってから再度お試しください。');
+                return;
+            }
+
+            geocoder.geocode({ address: place }, function(results, status) {
+                if (status === 'OK' && results && results[0]) {
+                    var loc = results[0].geometry.location;
+                    TOKYO_CENTER = { lat: loc.lat(), lng: loc.lng() };
+                    RADIUS_KM = radiusVal;
+                    BASE_NAME = place;
+                    closeSettings();
+                    resetGame();
+                } else {
+                    alert('位置の検索に失敗しました: ' + status);
+                }
+            });
+        };
+
+        document.getElementById('settings-btn').addEventListener('click', openSettings);
     </script>
 </body>
 </html>
