@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>メモ帳 - MyApps</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .back-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: transform 0.2s;
+            z-index: 10;
+        }
+        
+        .back-button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .notepad-container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .toolbar button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        
+        .toolbar button:hover {
+            transform: translateY(-2px);
+            background: #5568d3;
+        }
+        
+        .toolbar .clear-btn {
+            background: #f44336;
+        }
+        
+        .toolbar .clear-btn:hover {
+            background: #da190b;
+        }
+        
+        .toolbar .download-btn {
+            background: #4caf50;
+        }
+        
+        .toolbar .download-btn:hover {
+            background: #45a049;
+        }
+        
+        .editor-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        #notepad {
+            flex: 1;
+            padding: 20px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1em;
+            font-family: 'Courier New', monospace;
+            resize: none;
+            line-height: 1.6;
+        }
+        
+        #notepad:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .stats-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 8px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .auto-save-indicator {
+            color: #4caf50;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <a href="../index.html" class="back-button">← 戻る</a>
+    
+    <div class="notepad-container">
+        <h1>📝 メモ帳</h1>
+        
+        <div class="toolbar">
+            <button class="download-btn" onclick="downloadNote()">💾 ダウンロード</button>
+            <button onclick="copyToClipboard()">📋 コピー</button>
+            <button class="clear-btn" onclick="clearNote()">🗑️ クリア</button>
+        </div>
+        
+        <div class="editor-wrapper">
+            <textarea id="notepad" placeholder="ここにメモを入力してください...&#10;&#10;自動保存されます。"></textarea>
+        </div>
+        
+        <div class="stats-bar">
+            <span id="stats">文字数: 0 | 単語数: 0 | 行数: 1</span>
+            <span id="autoSave" class="auto-save-indicator"></span>
+        </div>
+    </div>
+    
+    <script>
+        const notepad = document.getElementById('notepad');
+        const statsElement = document.getElementById('stats');
+        const autoSaveElement = document.getElementById('autoSave');
+        let autoSaveTimeout;
+        
+        // Load saved note
+        function loadNote() {
+            const saved = localStorage.getItem('notepad_content');
+            if (saved) {
+                notepad.value = saved;
+                updateStats();
+            }
+        }
+        
+        // Save note to localStorage
+        function saveNote() {
+            localStorage.setItem('notepad_content', notepad.value);
+            showAutoSaveIndicator();
+        }
+        
+        // Show auto-save indicator
+        function showAutoSaveIndicator() {
+            autoSaveElement.textContent = '✓ 保存済み';
+            setTimeout(() => {
+                autoSaveElement.textContent = '';
+            }, 2000);
+        }
+        
+        // Update stats
+        function updateStats() {
+            const text = notepad.value;
+            const chars = text.length;
+            const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+            const lines = text ? text.split('\n').length : 1;
+            
+            statsElement.textContent = `文字数: ${chars} | 単語数: ${words} | 行数: ${lines}`;
+        }
+        
+        // Auto-save on input
+        notepad.addEventListener('input', () => {
+            updateStats();
+            
+            // Debounce auto-save
+            clearTimeout(autoSaveTimeout);
+            autoSaveTimeout = setTimeout(() => {
+                saveNote();
+            }, 1000);
+        });
+        
+        // Download note as text file
+        function downloadNote() {
+            const text = notepad.value;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `note_${new Date().toISOString().slice(0, 10)}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // Copy to clipboard
+        function copyToClipboard() {
+            notepad.select();
+            document.execCommand('copy');
+            
+            // Show feedback
+            const originalText = autoSaveElement.textContent;
+            autoSaveElement.textContent = '✓ コピーしました';
+            autoSaveElement.style.color = '#2196F3';
+            
+            setTimeout(() => {
+                autoSaveElement.textContent = originalText;
+                autoSaveElement.style.color = '#4caf50';
+            }, 2000);
+        }
+        
+        // Clear note
+        function clearNote() {
+            if (confirm('メモをクリアしてもよろしいですか？')) {
+                notepad.value = '';
+                saveNote();
+                updateStats();
+            }
+        }
+        
+        // Keyboard shortcuts
+        notepad.addEventListener('keydown', (e) => {
+            // Ctrl+S to save
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                saveNote();
+            }
+            
+            // Tab key support
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = notepad.selectionStart;
+                const end = notepad.selectionEnd;
+                notepad.value = notepad.value.substring(0, start) + '    ' + notepad.value.substring(end);
+                notepad.selectionStart = notepad.selectionEnd = start + 4;
+            }
+        });
+        
+        // Initialize
+        loadNote();
+    </script>
+</body>
+</html>
