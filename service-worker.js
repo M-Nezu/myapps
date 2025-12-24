@@ -70,4 +70,4 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// version 1.0.0
+// version 1.0.1
