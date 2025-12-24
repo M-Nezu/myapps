@@ -242,7 +242,8 @@
         // GAS対策: DOMContentLoadedが発火しない場合があるのでwindow.onloadも考慮
         window.onload = function() {
             // ローカルストレージからAPIキー取得を試みる
-            var savedKey = localStorage.getItem('googleMapsApiKey');
+            // キー名を変更: GOOGLE_MAPS_API_KEY
+            var savedKey = localStorage.getItem('GOOGLE_MAPS_API_KEY');
 
             if (savedKey && savedKey.trim() !== "") {
                 // キーが見つかった場合、それを使用
@@ -258,7 +259,7 @@
         window.gm_authFailure = function() {
             alert("Google Maps APIの認証に失敗しました。\n保存されたキーが無効な可能性があります。\nキーを削除してリロードします。");
             // 間違ったキーが保存されている場合は削除してリセット
-            localStorage.removeItem('googleMapsApiKey');
+            localStorage.removeItem('GOOGLE_MAPS_API_KEY');
             location.reload();
         };
 
@@ -267,8 +268,8 @@
             var key = input.value.trim();
             if (key) {
                 googleMapsApiKey = key;
-                // ローカルストレージに保存
-                localStorage.setItem('googleMapsApiKey', key);
+                // ローカルストレージに保存 (キー名を変更)
+                localStorage.setItem('GOOGLE_MAPS_API_KEY', key);
 
                 document.getElementById('api-key-modal').style.display = 'none';
                 loadGoogleMapsScript(key);
