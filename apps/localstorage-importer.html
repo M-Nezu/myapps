@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>LocalStorage Importer</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+	<style>
+		:root {
+			--bg: radial-gradient(circle at 20% 20%, #fef6e4 0, #fdf2dd 35%, #f7e6c8 70%, #f2d6ad 100%);
+			--card: #ffffff;
+			--ink: #1f1b1a;
+			--muted: #6b625f;
+			--accent: #ff7a59;
+			--accent-2: #2f9eae;
+			--border: #e2d7c9;
+			--shadow: 0 10px 40px rgba(24, 17, 9, 0.15);
+			--radius: 14px;
+			--field: #f9f4ed;
+		}
+
+		* { box-sizing: border-box; }
+
+		body {
+			margin: 0;
+			min-height: 100vh;
+			background: var(--bg);
+			font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+			color: var(--ink);
+			display: flex;
+			justify-content: center;
+			padding: 28px 18px 48px;
+		}
+
+		.shell {
+			width: min(1180px, 100%);
+			background: var(--card);
+			border: 1px solid var(--border);
+			border-radius: var(--radius);
+			box-shadow: var(--shadow);
+			padding: 26px 26px 30px;
+			backdrop-filter: blur(4px);
+		}
+
+		header {
+			display: flex;
+			align-items: baseline;
+			justify-content: space-between;
+			gap: 16px;
+			margin-bottom: 18px;
+		}
+
+		h1 {
+			margin: 0;
+			font-size: 26px;
+			letter-spacing: -0.4px;
+		}
+
+		.subtitle {
+			margin: 0;
+			color: var(--muted);
+			font-size: 15px;
+		}
+
+		.grid {
+			display: grid;
+			gap: 18px;
+			grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+		}
+
+		label {
+			display: block;
+			font-weight: 600;
+			margin-bottom: 8px;
+			letter-spacing: -0.1px;
+		}
+
+		textarea, input[type="text"] {
+			width: 100%;
+			border-radius: 12px;
+			border: 1px solid var(--border);
+			background: var(--field);
+			color: var(--ink);
+			padding: 12px 14px;
+			font-size: 15px;
+			line-height: 1.5;
+			transition: border-color 0.2s ease, box-shadow 0.2s ease;
+			font-family: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+		}
+
+		textarea:focus, input[type="text"]:focus {
+			outline: none;
+			border-color: var(--accent-2);
+			box-shadow: 0 0 0 3px rgba(47, 158, 174, 0.15);
+		}
+
+		textarea {
+			min-height: 240px;
+			resize: vertical;
+		}
+
+		.stack { display: flex; flex-direction: column; gap: 8px; }
+
+		.actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			margin-top: 6px;
+		}
+
+		button {
+			border: none;
+			border-radius: 12px;
+			padding: 12px 16px;
+			font-size: 15px;
+			font-weight: 600;
+			cursor: pointer;
+			color: #fff;
+			transition: transform 0.1s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+			box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+			letter-spacing: -0.1px;
+		}
+
+		button:active { transform: translateY(1px) scale(0.99); }
+
+		.btn-encode { background: linear-gradient(135deg, var(--accent), #ff9d6a); }
+		.btn-decode { background: linear-gradient(135deg, var(--accent-2), #3fb6c8); }
+		.btn-import { background: linear-gradient(135deg, #5b8c50, #76a663); }
+
+		.status {
+			margin-top: 14px;
+			padding: 10px 12px;
+			border-radius: 10px;
+			background: #fff7ec;
+			border: 1px solid var(--border);
+			color: var(--muted);
+			font-size: 14px;
+			min-height: 22px;
+			white-space: pre-line;
+		}
+
+		.inline-field {
+			display: grid;
+			grid-template-columns: 1fr 120px;
+			gap: 10px;
+			align-items: end;
+		}
+
+		@media (max-width: 640px) {
+			header { flex-direction: column; }
+			.inline-field { grid-template-columns: 1fr; }
+			textarea { min-height: 180px; }
+		}
+	</style>
+</head>
+<body>
+	<div class="shell">
+		<header>
+			<h1>LocalStorage Importer</h1>
+			<p class="subtitle">暗号化されたキー値リストを手早くエンコード/デコードしてローカルストレージへ投入</p>
+		</header>
+
+		<div class="grid">
+			<div class="stack">
+				<label for="source">ソーステキストエリア</label>
+				<textarea id="source" placeholder="例)\nfoo value-one\nbar another value"></textarea>
+			</div>
+			<div class="stack">
+				<label for="encoded">エンコードテキストエリア</label>
+				<textarea id="encoded" placeholder="暗号化 + Base64 文字列"></textarea>
+			</div>
+		</div>
+
+		<div class="inline-field" style="margin-top:16px;">
+			<div class="stack">
+				<label for="secret">暗号化キー入力エリア</label>
+				<input id="secret" type="text" placeholder="パスフレーズやシークレット" autocomplete="off">
+			</div>
+			<div class="actions">
+				<button class="btn-encode" id="btn-encode">エンコード</button>
+				<button class="btn-decode" id="btn-decode">デコード</button>
+				<button class="btn-import" id="btn-import">インポート</button>
+			</div>
+		</div>
+
+		<div class="status" id="status" aria-live="polite"></div>
+	</div>
+
+	<script>
+		const sourceEl = document.getElementById('source');
+		const encodedEl = document.getElementById('encoded');
+		const secretEl = document.getElementById('secret');
+		const statusEl = document.getElementById('status');
+
+		const enc = new TextEncoder();
+		const dec = new TextDecoder();
+
+		function setStatus(message, isError = false) {
+			statusEl.textContent = message;
+			statusEl.style.color = isError ? '#b33a3a' : 'var(--muted)';
+		}
+
+		function bufferToBase64(buffer) {
+			const bytes = new Uint8Array(buffer);
+			let binary = '';
+			for (let i = 0; i < bytes.length; i++) {
+				binary += String.fromCharCode(bytes[i]);
+			}
+			return btoa(binary);
+		}
+
+		function base64ToBuffer(base64) {
+			const binary = atob(base64);
+			const bytes = new Uint8Array(binary.length);
+			for (let i = 0; i < binary.length; i++) {
+				bytes[i] = binary.charCodeAt(i);
+			}
+			return bytes.buffer;
+		}
+
+		async function deriveKey(secret, salt) {
+			const keyMaterial = await crypto.subtle.importKey(
+				'raw',
+				enc.encode(secret),
+				'PBKDF2',
+				false,
+				['deriveKey']
+			);
+			return crypto.subtle.deriveKey(
+				{
+					name: 'PBKDF2',
+					salt,
+					iterations: 120000,
+					hash: 'SHA-256'
+				},
+				keyMaterial,
+				{ name: 'AES-GCM', length: 256 },
+				false,
+				['encrypt', 'decrypt']
+			);
+		}
+
+		async function handleEncode() {
+			try {
+				const secret = secretEl.value.trim();
+				if (!secret) return setStatus('暗号化キーを入力してください。', true);
+
+				const plainText = sourceEl.value;
+				const salt = crypto.getRandomValues(new Uint8Array(16));
+				const iv = crypto.getRandomValues(new Uint8Array(12));
+				const key = await deriveKey(secret, salt);
+				const cipher = await crypto.subtle.encrypt(
+					{ name: 'AES-GCM', iv },
+					key,
+					enc.encode(plainText)
+				);
+
+				const header = new Uint8Array(1 + salt.length + iv.length + cipher.byteLength);
+				header[0] = 1; // format version
+				header.set(salt, 1);
+				header.set(iv, 1 + salt.length);
+				header.set(new Uint8Array(cipher), 1 + salt.length + iv.length);
+
+				encodedEl.value = bufferToBase64(header.buffer);
+				setStatus('エンコード完了。');
+			} catch (err) {
+				console.error(err);
+				setStatus('エンコードに失敗しました: ' + err.message, true);
+			}
+		}
+
+		async function handleDecode() {
+			try {
+				const secret = secretEl.value.trim();
+				if (!secret) return setStatus('暗号化キーを入力してください。', true);
+
+				const payloadB64 = encodedEl.value.trim();
+				if (!payloadB64) return setStatus('エンコードテキストが空です。', true);
+
+				const payload = new Uint8Array(base64ToBuffer(payloadB64));
+				if (payload.length < 1 + 16 + 12) throw new Error('フォーマットが不正です。');
+				const version = payload[0];
+				if (version !== 1) throw new Error('未知のフォーマットバージョン。');
+
+				const salt = payload.slice(1, 17);
+				const iv = payload.slice(17, 29);
+				const cipher = payload.slice(29);
+
+				const key = await deriveKey(secret, salt);
+				const plainBuffer = await crypto.subtle.decrypt(
+					{ name: 'AES-GCM', iv },
+					key,
+					cipher
+				);
+
+				sourceEl.value = dec.decode(plainBuffer);
+				setStatus('デコード完了。');
+			} catch (err) {
+				console.error(err);
+				setStatus('デコードに失敗しました: ' + err.message, true);
+			}
+		}
+
+		function handleImport() {
+			const text = sourceEl.value;
+			const lines = text.split(/\r?\n/);
+			let imported = 0;
+
+			for (const lineRaw of lines) {
+				const line = lineRaw.trim();
+				if (!line) continue;
+				const firstSpace = line.search(/\s/);
+				const hasSpace = firstSpace !== -1;
+				const key = hasSpace ? line.slice(0, firstSpace) : line;
+				const value = hasSpace ? line.slice(firstSpace + 1) : '';
+				if (!key) continue;
+				localStorage.setItem(key, value);
+				imported += 1;
+			}
+
+			setStatus(imported ? `${imported} 件を localStorage に保存しました。` : '取り込む行がありませんでした。');
+		}
+
+		document.getElementById('btn-encode').addEventListener('click', handleEncode);
+		document.getElementById('btn-decode').addEventListener('click', handleDecode);
+		document.getElementById('btn-import').addEventListener('click', handleImport);
+	</script>
+</body>
+</html>
