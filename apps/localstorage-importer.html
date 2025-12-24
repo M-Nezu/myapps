@@ -128,6 +128,7 @@
 		.btn-encode { background: linear-gradient(135deg, var(--accent), #ff9d6a); }
 		.btn-decode { background: linear-gradient(135deg, var(--accent-2), #3fb6c8); }
 		.btn-import { background: linear-gradient(135deg, #5b8c50, #76a663); }
+		.btn-export { background: linear-gradient(135deg, #7c5cff, #9a7cff); }
 
 		.status {
 			margin-top: 14px;
@@ -182,6 +183,7 @@
 				<button class="btn-encode" id="btn-encode">エンコード</button>
 				<button class="btn-decode" id="btn-decode">デコード</button>
 				<button class="btn-import" id="btn-import">インポート</button>
+				<button class="btn-export" id="btn-export">エクスポート</button>
 			</div>
 		</div>
 
@@ -323,9 +325,22 @@
 			setStatus(imported ? `${imported} 件を localStorage に保存しました。` : '取り込む行がありませんでした。');
 		}
 
+		function handleExport() {
+			const lines = [];
+			for (let i = 0; i < localStorage.length; i++) {
+				const key = localStorage.key(i);
+				if (key == null) continue;
+				const value = localStorage.getItem(key) ?? '';
+				lines.push(`${key} ${value}`);
+			}
+			sourceEl.value = lines.join('\n');
+			setStatus(lines.length ? `${lines.length} 件をエクスポートしました。` : 'localStorage は空です。');
+		}
+
 		document.getElementById('btn-encode').addEventListener('click', handleEncode);
 		document.getElementById('btn-decode').addEventListener('click', handleDecode);
 		document.getElementById('btn-import').addEventListener('click', handleImport);
+		document.getElementById('btn-export').addEventListener('click', handleExport);
 	</script>
 </body>
 </html>
