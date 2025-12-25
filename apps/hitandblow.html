@@ -15,24 +15,27 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            padding: 20px;
+            overflow: auto;
+            padding: 60px 10px 10px;
         }
         
         .back-button {
-            position: absolute;
-            top: 20px;
-            left: 20px;
+            position: fixed;
+            top: 10px;
+            left: 10px;
             background: white;
             color: #667eea;
             text-decoration: none;
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 8px;
             font-weight: bold;
             transition: transform 0.2s;
+            z-index: 1000;
+            font-size: 0.9em;
         }
         
         .back-button:hover {
@@ -42,49 +45,53 @@
         .game-container {
             background: white;
             border-radius: 20px;
-            padding: 30px;
+            padding: 20px 15px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
             max-width: 600px;
             width: 100%;
+            margin: auto;
         }
         
         h1 {
             text-align: center;
             color: #333;
             margin-bottom: 10px;
+            font-size: 1.5em;
         }
         
         .instructions {
             background: #f5f5f5;
-            padding: 15px;
+            padding: 12px;
             border-radius: 10px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             color: #666;
-            font-size: 0.9em;
-            line-height: 1.6;
+            font-size: 0.85em;
+            line-height: 1.5;
         }
         
         .game-status {
             text-align: center;
-            margin-bottom: 20px;
-            font-size: 1.1em;
+            margin-bottom: 15px;
+            font-size: 1em;
             color: #333;
         }
         
         .input-section {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+            gap: 8px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
         }
         
         #guessInput {
             flex: 1;
-            padding: 15px;
-            font-size: 1.5em;
+            min-width: 120px;
+            padding: 12px;
+            font-size: 1.3em;
             border: 2px solid #ddd;
             border-radius: 10px;
             text-align: center;
-            letter-spacing: 0.5em;
+            letter-spacing: 0.3em;
         }
         
         #guessInput:focus {
@@ -93,13 +100,14 @@
         }
         
         .btn {
-            padding: 15px 30px;
-            font-size: 1.1em;
+            padding: 12px 20px;
+            font-size: 1em;
             border: none;
             border-radius: 10px;
             cursor: pointer;
             font-weight: bold;
             transition: all 0.2s;
+            white-space: nowrap;
         }
         
         .btn:hover {
@@ -121,49 +129,53 @@
         }
         
         .history {
-            margin-top: 20px;
+            margin-top: 15px;
         }
         
         .history-title {
             font-weight: bold;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             color: #333;
+            font-size: 0.95em;
         }
         
         .history-list {
-            max-height: 300px;
+            max-height: 200px;
             overflow-y: auto;
             border: 1px solid #ddd;
             border-radius: 10px;
-            padding: 10px;
+            padding: 8px;
         }
         
         .history-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px;
+            padding: 8px;
             margin-bottom: 5px;
             background: #f5f5f5;
             border-radius: 8px;
+            font-size: 0.9em;
         }
         
         .guess-number {
-            font-size: 1.2em;
+            font-size: 1.1em;
             font-weight: bold;
-            letter-spacing: 0.3em;
+            letter-spacing: 0.2em;
             color: #333;
         }
         
         .result {
             display: flex;
-            gap: 15px;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         
         .hit, .blow {
-            padding: 5px 15px;
+            padding: 4px 12px;
             border-radius: 5px;
             font-weight: bold;
+            font-size: 0.85em;
         }
         
         .hit {
@@ -178,10 +190,10 @@
         
         .message {
             text-align: center;
-            padding: 20px;
-            margin: 20px 0;
+            padding: 15px;
+            margin: 15px 0;
             border-radius: 10px;
-            font-size: 1.2em;
+            font-size: 1em;
             font-weight: bold;
         }
         
@@ -198,8 +210,8 @@
         .stats {
             display: flex;
             justify-content: space-around;
-            margin-top: 20px;
-            padding: 15px;
+            margin-top: 15px;
+            padding: 12px;
             background: #f5f5f5;
             border-radius: 10px;
         }
@@ -209,14 +221,129 @@
         }
         
         .stat-value {
-            font-size: 1.5em;
+            font-size: 1.3em;
             font-weight: bold;
             color: #667eea;
         }
         
         .stat-label {
+            font-size: 0.85em;
+            color: #666;
+        }
+        
+        /* Software Number Pad */
+        .numpad-container {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+        
+        .numpad-title {
+            text-align: center;
             font-size: 0.9em;
             color: #666;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        
+        .numpad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            max-width: 250px;
+            margin: 0 auto;
+        }
+        
+        .numpad-btn {
+            padding: 15px;
+            font-size: 1.3em;
+            font-weight: bold;
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #333;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        
+        .numpad-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+            transform: scale(1.05);
+        }
+        
+        .numpad-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .numpad-btn.delete {
+            background: #ff9800;
+            color: white;
+            border-color: #ff9800;
+        }
+        
+        .numpad-btn.delete:hover {
+            background: #f57c00;
+            border-color: #f57c00;
+        }
+        
+        .numpad-btn.clear {
+            background: #f44336;
+            color: white;
+            border-color: #f44336;
+        }
+        
+        .numpad-btn.clear:hover {
+            background: #d32f2f;
+            border-color: #d32f2f;
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 50px 5px 5px;
+            }
+            
+            .game-container {
+                padding: 15px 10px;
+                border-radius: 15px;
+            }
+            
+            h1 {
+                font-size: 1.3em;
+            }
+            
+            .instructions {
+                font-size: 0.8em;
+                padding: 10px;
+            }
+            
+            .input-section {
+                gap: 5px;
+            }
+            
+            .btn {
+                padding: 10px 15px;
+                font-size: 0.9em;
+            }
+            
+            .history-list {
+                max-height: 150px;
+            }
+            
+            .numpad {
+                gap: 8px;
+            }
+            
+            .numpad-btn {
+                padding: 12px;
+                font-size: 1.2em;
+            }
         }
     </style>
 </head>
@@ -265,6 +392,24 @@
                 <div style="text-align: center; color: #999; padding: 20px;">
                     まだ推測がありません
                 </div>
+            </div>
+        </div>
+        
+        <div class="numpad-container">
+            <div class="numpad-title">ソフトウェアテンキー</div>
+            <div class="numpad">
+                <button class="numpad-btn" onclick="inputNumber('1')">1</button>
+                <button class="numpad-btn" onclick="inputNumber('2')">2</button>
+                <button class="numpad-btn" onclick="inputNumber('3')">3</button>
+                <button class="numpad-btn" onclick="inputNumber('4')">4</button>
+                <button class="numpad-btn" onclick="inputNumber('5')">5</button>
+                <button class="numpad-btn" onclick="inputNumber('6')">6</button>
+                <button class="numpad-btn" onclick="inputNumber('7')">7</button>
+                <button class="numpad-btn" onclick="inputNumber('8')">8</button>
+                <button class="numpad-btn" onclick="inputNumber('9')">9</button>
+                <button class="numpad-btn clear" onclick="clearInput()">C</button>
+                <button class="numpad-btn" onclick="inputNumber('0')">0</button>
+                <button class="numpad-btn delete" onclick="deleteLastDigit()">⌫</button>
             </div>
         </div>
     </div>
@@ -420,6 +565,31 @@
         document.getElementById('guessInput').addEventListener('input', (e) => {
             e.target.value = e.target.value.replace(/[^0-9]/g, '');
         });
+        
+        // Software number pad functions
+        function inputNumber(digit) {
+            const input = document.getElementById('guessInput');
+            if (input.value.length < 4 && !gameOver) {
+                input.value += digit;
+                input.focus();
+            }
+        }
+        
+        function deleteLastDigit() {
+            const input = document.getElementById('guessInput');
+            if (!gameOver) {
+                input.value = input.value.slice(0, -1);
+                input.focus();
+            }
+        }
+        
+        function clearInput() {
+            const input = document.getElementById('guessInput');
+            if (!gameOver) {
+                input.value = '';
+                input.focus();
+            }
+        }
     </script>
 </body>
 </html>
