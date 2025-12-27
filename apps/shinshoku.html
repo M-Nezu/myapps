@@ -433,7 +433,7 @@
         function applyThermalErosion() {
             if (PARAMS.thermalErosion <= 0) return;
             
-            const maxAngle = 0.7; // 最大許容斜度（約35度）
+            const maxAngle = 0.7; // 最大許容斜度（約35度） - これを超える斜度で土砂移動が発生
             const tempMap = new Float32Array(SIZE * SIZE);
             
             for (let y = 1; y < SIZE - 1; y++) {
@@ -475,7 +475,7 @@
                     if (change > 0) {
                         heightMap[idx] -= change * 0.5;
                         
-                        // 隣接セルに配分
+                        // 隣接セルに配分（残り半分を4近傍に均等配分：0.5/4=0.125）
                         const neighbors = [
                             [x-1, y], [x+1, y], [x, y-1], [x, y+1]
                         ];
@@ -542,7 +542,7 @@
                         const idx = y * SIZE + x;
                         const dx = (x - cx) / SIZE;
                         const dy = (y - cy) / SIZE;
-                        // 傾斜方向の位置に応じた隆起
+                        // 傾斜方向の位置に応じた隆起（0.5はオフセットで全域で正の隆起を保証）
                         const dist = cosA * dx + sinA * dy;
                         const uplift = speed * (0.5 + dist);
                         if (uplift > 0) {
