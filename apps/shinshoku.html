@@ -12,9 +12,10 @@
             position: absolute;
             top: 10px;
             left: 10px;
-            width: 240px;
+            width: auto;
+            max-width: 95vw;
             background: rgba(30, 30, 30, 0.9);
-            padding: 10px;
+            padding: 8px;
             border-radius: 6px;
             border: 1px solid #555;
             pointer-events: auto;
@@ -41,13 +42,34 @@
             transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
             max-height: 600px;
             opacity: 1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .control-column {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 200px;
         }
 
         #ui-panel.collapsed #ui-content { max-height: 0; opacity: 0; margin: 0; }
         #ui-panel.collapsed .panel-header { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         
-        .control-group { margin-bottom: 8px; }
+        .control-group { margin-bottom: 0; }
         .control-group label { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; color: #ccc; }
+        
+        select {
+            width: 100%;
+            padding: 4px;
+            background: #444;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+        }
         
         /* ボタン横並び用のコンテナ */
         .btn-row {
@@ -72,6 +94,7 @@
         
         button.active-play { background: #2e7d32; border-color: #4caf50; }
         button.active-uplift { background: #d84315; border-color: #ff5722; }
+        button.active-continuous { background: #1565c0; border-color: #2196f3; }
         
         /* 全体隆起・沈降ボタンの色 */
         button#global-uplift-btn { background: #5d4037; border-color: #8d6e63; }
@@ -93,40 +116,66 @@
         </div>
 
         <div id="ui-content">
-            <!-- 横並び配置 -->
-            <div class="control-group btn-row">
-                <button id="toggle-play-btn">開始</button>
-                <button id="reset-btn">リセット</button>
+            <!-- 左列 -->
+            <div class="control-column">
+                <div class="control-group btn-row">
+                    <button id="toggle-play-btn">開始</button>
+                    <button id="reset-btn">リセット</button>
+                </div>
+
+                <div class="control-group">
+                    <button id="toggle-uplift-btn">スポット隆起: OFF</button>
+                </div>
+
+                <div class="control-group btn-row">
+                    <button id="global-uplift-btn">全体隆起</button>
+                    <button id="global-subside-btn">全体沈降</button>
+                </div>
+
+                <div class="control-group">
+                    <label>堆積率 <span id="dep-val">0.3</span></label>
+                    <input type="range" id="dep-slider" min="0.01" max="1.0" step="0.01" value="0.3">
+                </div>
+
+                <div class="control-group">
+                    <label>熱的浸食率 <span id="thermal-val">0.3</span></label>
+                    <input type="range" id="thermal-slider" min="0.0" max="1.0" step="0.05" value="0.3">
+                </div>
             </div>
 
-            <div class="control-group">
-                <button id="toggle-uplift-btn">スポット隆起 (クリック): OFF</button>
-            </div>
+            <!-- 右列 -->
+            <div class="control-column">
+                <div class="control-group">
+                    <button id="toggle-continuous-uplift-btn">継続隆起: OFF</button>
+                </div>
 
-            <!-- 地殻変動ボタン (横並び) -->
-            <div class="control-group btn-row">
-                <button id="global-uplift-btn">全体隆起 (+1)</button>
-                <button id="global-subside-btn">全体沈降 (-1)</button>
-            </div>
+                <div class="control-group">
+                    <label>隆起パターン</label>
+                    <select id="uplift-pattern">
+                        <option value="circular">円形（中心点）</option>
+                        <option value="axis">軸線（中心通過）</option>
+                        <option value="plane">傾斜平面</option>
+                    </select>
+                </div>
 
-            <div class="control-group">
-                <label>堆積率 (Deposition) <span id="dep-val">0.3</span></label>
-                <input type="range" id="dep-slider" min="0.01" max="1.0" step="0.01" value="0.3">
-            </div>
+                <div class="control-group">
+                    <label>隆起速度 <span id="uplift-speed-val">0.05</span></label>
+                    <input type="range" id="uplift-speed-slider" min="0.01" max="0.5" step="0.01" value="0.05">
+                </div>
 
-            <div class="control-group">
-                <label>高さ強調倍率</label>
-                <input type="range" id="height-scale-slider" min="0.1" max="3.0" step="0.1" value="1.0">
-            </div>
+                <div class="control-group">
+                    <label>高さ強調倍率</label>
+                    <input type="range" id="height-scale-slider" min="0.1" max="3.0" step="0.1" value="1.0">
+                </div>
 
-            <div class="control-group">
-                <label>履歴スライダー <span id="history-val">0</span></label>
-                <input type="range" id="history-slider" min="0" max="0" value="0" disabled>
-            </div>
+                <div class="control-group">
+                    <label>履歴 <span id="history-val">0</span></label>
+                    <input type="range" id="history-slider" min="0" max="0" value="0" disabled>
+                </div>
 
-            <div class="stats">
-                <div>雨滴数: <span id="drop-count" style="color:#fff; font-weight:bold;">0</span></div>
-                <div style="margin-top:2px; font-size:9px;">※海面下では川を表示しません</div>
+                <div class="stats">
+                    <div>雨滴数: <span id="drop-count" style="color:#fff; font-weight:bold;">0</span></div>
+                </div>
             </div>
         </div>
     </div>
@@ -158,13 +207,21 @@
             evaporation: 0.05,
             gravity: 4,
             maxHeight: 400,
-            minHeight: -100
+            minHeight: -100,
+            thermalErosion: 0.3  // 熱的浸食率
         };
 
         const UPLIFT_PARAMS = {
             height: 5.0,
             radius: 20.0,
             sigma: 8.0
+        };
+
+        const CONTINUOUS_UPLIFT_PARAMS = {
+            speed: 0.05,        // 隆起速度
+            pattern: 'circular', // 'circular', 'axis', 'plane'
+            axisAngle: 0,       // 軸線の角度（ラジアン）
+            planeAngle: Math.PI / 4  // 傾斜平面の角度
         };
 
         let scene, camera, renderer, controls;
@@ -176,6 +233,7 @@
         
         let isPlaying = false;
         let isUpliftMode = false;
+        let isContinuousUplift = false;  // 継続隆起モード
         
         let totalDrops = 0;
         let displayScale = 1.0;
@@ -371,8 +429,136 @@
             updateMesh();
         }
 
+        // 熱的浸食（斜面の角度に応じた拡散）
+        function applyThermalErosion() {
+            if (PARAMS.thermalErosion <= 0) return;
+            
+            const maxAngle = 0.7; // 最大許容斜度（約35度） - これを超える斜度で土砂移動が発生
+            const tempMap = new Float32Array(SIZE * SIZE);
+            
+            for (let y = 1; y < SIZE - 1; y++) {
+                for (let x = 1; x < SIZE - 1; x++) {
+                    const idx = y * SIZE + x;
+                    const h = heightMap[idx];
+                    let totalDiff = 0;
+                    let count = 0;
+                    
+                    // 4近傍をチェック
+                    const neighbors = [
+                        [x-1, y], [x+1, y], [x, y-1], [x, y+1]
+                    ];
+                    
+                    for (const [nx, ny] of neighbors) {
+                        const nidx = ny * SIZE + nx;
+                        const nh = heightMap[nidx];
+                        const diff = h - nh;
+                        
+                        // 斜度が大きい場合、土砂を移動
+                        if (Math.abs(diff) > maxAngle) {
+                            totalDiff += diff;
+                            count++;
+                        }
+                    }
+                    
+                    if (count > 0) {
+                        tempMap[idx] = totalDiff * PARAMS.thermalErosion / count;
+                    }
+                }
+            }
+            
+            // 高さマップに適用
+            for (let y = 1; y < SIZE - 1; y++) {
+                for (let x = 1; x < SIZE - 1; x++) {
+                    const idx = y * SIZE + x;
+                    const change = tempMap[idx];
+                    
+                    if (change > 0) {
+                        heightMap[idx] -= change * 0.5;
+                        
+                        // 隣接セルに配分（残り半分を4近傍に均等配分：0.5/4=0.125）
+                        const neighbors = [
+                            [x-1, y], [x+1, y], [x, y-1], [x, y+1]
+                        ];
+                        
+                        for (const [nx, ny] of neighbors) {
+                            const nidx = ny * SIZE + nx;
+                            heightMap[nidx] += change * 0.125;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 継続的な隆起を適用
+        function applyContinuousUplift() {
+            if (!isContinuousUplift) return;
+            
+            const pattern = CONTINUOUS_UPLIFT_PARAMS.pattern;
+            const speed = CONTINUOUS_UPLIFT_PARAMS.speed;
+            const cx = SIZE / 2;
+            const cy = SIZE / 2;
+            
+            if (pattern === 'circular') {
+                // 円形の正規分布状隆起
+                const sigma = SIZE * 0.15;
+                for (let y = 0; y < SIZE; y++) {
+                    for (let x = 0; x < SIZE; x++) {
+                        const idx = y * SIZE + x;
+                        const dx = x - cx;
+                        const dy = y - cy;
+                        const distSq = dx*dx + dy*dy;
+                        const uplift = speed * Math.exp(-distSq / (2 * sigma * sigma));
+                        heightMap[idx] += uplift;
+                        if (heightMap[idx] > PARAMS.maxHeight) heightMap[idx] = PARAMS.maxHeight;
+                    }
+                }
+            } else if (pattern === 'axis') {
+                // 軸線を中心とした正規分布状隆起
+                const angle = CONTINUOUS_UPLIFT_PARAMS.axisAngle;
+                const sigma = SIZE * 0.1;
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+                
+                for (let y = 0; y < SIZE; y++) {
+                    for (let x = 0; x < SIZE; x++) {
+                        const idx = y * SIZE + x;
+                        const dx = x - cx;
+                        const dy = y - cy;
+                        // 軸線からの垂直距離
+                        const dist = Math.abs(-sinA * dx + cosA * dy);
+                        const uplift = speed * Math.exp(-dist * dist / (2 * sigma * sigma));
+                        heightMap[idx] += uplift;
+                        if (heightMap[idx] > PARAMS.maxHeight) heightMap[idx] = PARAMS.maxHeight;
+                    }
+                }
+            } else if (pattern === 'plane') {
+                // 傾斜平面状の隆起
+                const angle = CONTINUOUS_UPLIFT_PARAMS.planeAngle;
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+                
+                for (let y = 0; y < SIZE; y++) {
+                    for (let x = 0; x < SIZE; x++) {
+                        const idx = y * SIZE + x;
+                        const dx = (x - cx) / SIZE;
+                        const dy = (y - cy) / SIZE;
+                        // 傾斜方向の位置に応じた隆起（0.5はオフセットで全域で正の隆起を保証）
+                        const dist = cosA * dx + sinA * dy;
+                        const uplift = speed * (0.5 + dist);
+                        if (uplift > 0) {
+                            heightMap[idx] += uplift;
+                            if (heightMap[idx] > PARAMS.maxHeight) heightMap[idx] = PARAMS.maxHeight;
+                        }
+                    }
+                }
+            }
+        }
+
         function simulate() {
             for(let i=0; i<fluxMap.length; i++) fluxMap[i] *= 0.7;
+
+            // 継続的な隆起を適用
+            applyContinuousUplift();
 
             for (let k = 0; k < DROPS_PER_FRAME; k++) {
                 let x = Math.random() * (SIZE - 2) + 1;
@@ -469,6 +655,10 @@
                 }
                 totalDrops++;
             }
+            
+            // 熱的浸食を適用
+            applyThermalErosion();
+            
             if (totalDrops % SNAPSHOT_INTERVAL === 0) saveSnapshot();
         }
 
@@ -571,11 +761,23 @@
             btnUplift.onclick = () => {
                 isUpliftMode = !isUpliftMode;
                 if (isUpliftMode) {
-                    btnUplift.textContent = "スポット隆起 (クリック): ON";
+                    btnUplift.textContent = "スポット隆起: ON";
                     btnUplift.classList.add("active-uplift");
                 } else {
-                    btnUplift.textContent = "スポット隆起 (クリック): OFF";
+                    btnUplift.textContent = "スポット隆起: OFF";
                     btnUplift.classList.remove("active-uplift");
+                }
+            };
+
+            const btnContinuousUplift = document.getElementById('toggle-continuous-uplift-btn');
+            btnContinuousUplift.onclick = () => {
+                isContinuousUplift = !isContinuousUplift;
+                if (isContinuousUplift) {
+                    btnContinuousUplift.textContent = "継続隆起: ON";
+                    btnContinuousUplift.classList.add("active-continuous");
+                } else {
+                    btnContinuousUplift.textContent = "継続隆起: OFF";
+                    btnContinuousUplift.classList.remove("active-continuous");
                 }
             };
 
@@ -598,6 +800,23 @@
             depSlider.oninput = (e) => {
                 PARAMS.deposition = parseFloat(e.target.value);
                 document.getElementById('dep-val').innerText = PARAMS.deposition.toFixed(2);
+            }
+            
+            const thermalSlider = document.getElementById('thermal-slider');
+            thermalSlider.oninput = (e) => {
+                PARAMS.thermalErosion = parseFloat(e.target.value);
+                document.getElementById('thermal-val').innerText = PARAMS.thermalErosion.toFixed(2);
+            }
+            
+            const upliftPatternSelect = document.getElementById('uplift-pattern');
+            upliftPatternSelect.onchange = (e) => {
+                CONTINUOUS_UPLIFT_PARAMS.pattern = e.target.value;
+            }
+            
+            const upliftSpeedSlider = document.getElementById('uplift-speed-slider');
+            upliftSpeedSlider.oninput = (e) => {
+                CONTINUOUS_UPLIFT_PARAMS.speed = parseFloat(e.target.value);
+                document.getElementById('uplift-speed-val').innerText = CONTINUOUS_UPLIFT_PARAMS.speed.toFixed(2);
             }
             
             const hSlider = document.getElementById('history-slider');
