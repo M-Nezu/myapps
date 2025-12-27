@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地形浸食シミュレーター v20 (プレビュー用)</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #111; color: white; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        #ui-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 240px;
+            background: rgba(30, 30, 30, 0.9);
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #555;
+            pointer-events: auto;
+            user-select: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: height 0.3s;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #666;
+            padding-bottom: 5px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .panel-header h1 { font-size: 13px; margin: 0; padding: 0; color: #eee; }
+        .toggle-icon { font-size: 14px; color: #aaa; font-weight: bold; }
+
+        #ui-content {
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+            max-height: 600px;
+            opacity: 1;
+        }
+
+        #ui-panel.collapsed #ui-content { max-height: 0; opacity: 0; margin: 0; }
+        #ui-panel.collapsed .panel-header { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        
+        .control-group { margin-bottom: 8px; }
+        .control-group label { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; color: #ccc; }
+        
+        /* ボタン横並び用のコンテナ */
+        .btn-row {
+            display: flex;
+            gap: 5px; /* ボタン間の隙間 */
+        }
+
+        button {
+            width: 100%;
+            padding: 6px 4px;
+            background: #444;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.2s;
+            /* 横並び時に均等幅にする */
+            flex: 1; 
+        }
+        button:hover { background: #555; }
+        
+        button.active-play { background: #2e7d32; border-color: #4caf50; }
+        button.active-uplift { background: #d84315; border-color: #ff5722; }
+        
+        /* 全体隆起・沈降ボタンの色 */
+        button#global-uplift-btn { background: #5d4037; border-color: #8d6e63; }
+        button#global-uplift-btn:hover { background: #6d4c41; }
+        button#global-subside-btn { background: #455a64; border-color: #78909c; }
+        button#global-subside-btn:hover { background: #546e7a; }
+
+        input[type=range] { width: 100%; cursor: pointer; margin: 2px 0; }
+        
+        .stats { font-size: 10px; color: #aaa; margin-top: 8px; border-top: 1px solid #555; padding-top: 4px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <div class="panel-header" id="panel-header">
+            <h1>地形シミュレータ v20</h1>
+            <span class="toggle-icon" id="toggle-icon">−</span>
+        </div>
+
+        <div id="ui-content">
+            <!-- 横並び配置 -->
+            <div class="control-group btn-row">
+                <button id="toggle-play-btn">開始</button>
+                <button id="reset-btn">リセット</button>
+            </div>
+
+            <div class="control-group">
+                <button id="toggle-uplift-btn">スポット隆起 (クリック): OFF</button>
+            </div>
+
+            <!-- 地殻変動ボタン (横並び) -->
+            <div class="control-group btn-row">
+                <button id="global-uplift-btn">全体隆起 (+1)</button>
+                <button id="global-subside-btn">全体沈降 (-1)</button>
+            </div>
+
+            <div class="control-group">
+                <label>堆積率 (Deposition) <span id="dep-val">0.3</span></label>
+                <input type="range" id="dep-slider" min="0.01" max="1.0" step="0.01" value="0.3">
+            </div>
+
+            <div class="control-group">
+                <label>高さ強調倍率</label>
+                <input type="range" id="height-scale-slider" min="0.1" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>履歴スライダー <span id="history-val">0</span></label>
+                <input type="range" id="history-slider" min="0" max="0" value="0" disabled>
+            </div>
+
+            <div class="stats">
+                <div>雨滴数: <span id="drop-count" style="color:#fff; font-weight:bold;">0</span></div>
+                <div style="margin-top:2px; font-size:9px;">※海面下では川を表示しません</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- 設定 ---
+        const SIZE = 256;
+        const SCALE = 0.6;
+        const MAX_HISTORY = 300; 
+        const SNAPSHOT_INTERVAL = 10000; 
+        const DROPS_PER_FRAME = 1000; 
+
+        // 浸食パラメータ
+        // capacity: 水が運べる土砂の最大量
+        // minSlope: 勾配が0でも最低限運べる量
+        // deposition: キャパシティを超えた時に土砂を置く割合
+        // erosion: キャパシティに余裕がある時に削る割合
+        const PARAMS = {
+            inertia: 0.05,
+            minSlope: 0.005,
+            capacity: 8,
+            deposition: 0.3,
+            erosion: 0.1,
+            evaporation: 0.05,
+            gravity: 4,
+            maxHeight: 400,
+            minHeight: -100
+        };
+
+        const UPLIFT_PARAMS = {
+            height: 5.0,
+            radius: 20.0,
+            sigma: 8.0
+        };
+
+        let scene, camera, renderer, controls;
+        let terrainMesh, waterMesh;
+        let raycaster, mouse;
+        let heightMap = new Float32Array(SIZE * SIZE);
+        let fluxMap = new Float32Array(SIZE * SIZE);
+        let history = [];
+        
+        let isPlaying = false;
+        let isUpliftMode = false;
+        
+        let totalDrops = 0;
+        let displayScale = 1.0;
+        // 海水面は固定
+        const SEA_LEVEL = 0; 
+        
+        let mouseDownPos = new THREE.Vector2();
+
+        function init() {
+            try {
+                const container = document.getElementById('canvas-container');
+                
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x87CEEB);
+
+                camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 5000);
+                camera.position.set(0, 220, 320);
+
+                renderer = new THREE.WebGLRenderer({ antialias: false });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                container.appendChild(renderer.domElement);
+
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.2;
+                controls.maxPolarAngle = Math.PI / 2 - 0.05;
+
+                const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+                scene.add(ambient);
+                const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+                dirLight.position.set(100, 200, 50);
+                scene.add(dirLight);
+
+                raycaster = new THREE.Raycaster();
+                mouse = new THREE.Vector2();
+
+                createTerrainMesh();
+                createWaterMesh();
+                
+                setupUI();
+                setupInteraction();
+                resetTerrain();
+                
+                updatePlayBtn();
+                animate();
+
+            } catch (e) {
+                console.error("Init Error:", e);
+            }
+        }
+
+        function createTerrainMesh() {
+            const geometry = new THREE.PlaneGeometry(SIZE * SCALE, SIZE * SCALE, SIZE - 1, SIZE - 1);
+            const count = geometry.attributes.position.count;
+            const colors = new Float32Array(count * 3);
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.MeshLambertMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                flatShading: true 
+            });
+
+            terrainMesh = new THREE.Mesh(geometry, material);
+            terrainMesh.rotation.x = -Math.PI / 2;
+            scene.add(terrainMesh);
+        }
+
+        function createWaterMesh() {
+            const geometry = new THREE.PlaneGeometry(SIZE * SCALE, SIZE * SCALE);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x1e90ff,
+                transparent: true,
+                opacity: 0.5,
+                roughness: 0.1,
+                metalness: 0.1,
+                side: THREE.DoubleSide
+            });
+            waterMesh = new THREE.Mesh(geometry, material);
+            waterMesh.rotation.x = -Math.PI / 2;
+            waterMesh.position.y = SEA_LEVEL; // 固定
+            scene.add(waterMesh);
+        }
+
+        function setupInteraction() {
+            const canvas = renderer.domElement;
+            canvas.addEventListener('pointerdown', (e) => {
+                mouseDownPos.set(e.clientX, e.clientY);
+            });
+            canvas.addEventListener('pointerup', (e) => {
+                const dist = mouseDownPos.distanceTo(new THREE.Vector2(e.clientX, e.clientY));
+                if (dist < 5) onCanvasClick(e);
+            });
+        }
+
+        function onCanvasClick(event) {
+            if (!isUpliftMode || !terrainMesh) return;
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(terrainMesh);
+
+            if (intersects.length > 0) {
+                const p = intersects[0].point;
+                applyCircularUplift(p);
+            }
+        }
+
+        function applyCircularUplift(worldPoint) {
+            const halfSize = (SIZE * SCALE) / 2;
+            const lx = worldPoint.x;
+            const ly = worldPoint.z; 
+
+            const gridX = ((lx + halfSize) / (SIZE * SCALE)) * (SIZE - 1);
+            const gridY = ((ly + halfSize) / (SIZE * SCALE)) * (SIZE - 1);
+
+            const cx = gridX;
+            const cy = gridY;
+            const R = UPLIFT_PARAMS.radius;
+            const A = UPLIFT_PARAMS.height;
+            const sigma2 = UPLIFT_PARAMS.sigma * UPLIFT_PARAMS.sigma;
+
+            const startX = Math.max(0, Math.floor(cx - R));
+            const endX = Math.min(SIZE - 1, Math.ceil(cx + R));
+            const startY = Math.max(0, Math.floor(cy - R));
+            const endY = Math.min(SIZE - 1, Math.ceil(cy + R));
+
+            for (let y = startY; y <= endY; y++) {
+                for (let x = startX; x <= endX; x++) {
+                    const dx = x - cx;
+                    const dy = y - cy;
+                    const distSq = dx*dx + dy*dy;
+
+                    if (distSq <= R*R) {
+                        const lift = A * Math.exp(-distSq / (2 * sigma2));
+                        const idx = y * SIZE + x;
+                        heightMap[idx] += lift;
+                        if (heightMap[idx] > PARAMS.maxHeight) heightMap[idx] = PARAMS.maxHeight;
+                    }
+                }
+            }
+            updateMesh();
+            saveSnapshot(); 
+        }
+
+        // --- 地殻変動（全体隆起・沈降） ---
+        function applyGlobalChange(amount) {
+            for (let i = 0; i < heightMap.length; i++) {
+                heightMap[i] += amount;
+                // リミッターチェック
+                if (heightMap[i] > PARAMS.maxHeight) heightMap[i] = PARAMS.maxHeight;
+                if (heightMap[i] < PARAMS.minHeight) heightMap[i] = PARAMS.minHeight;
+            }
+            updateMesh();
+            saveSnapshot();
+        }
+
+        function resetTerrain() {
+            heightMap.fill(0);
+            fluxMap.fill(0);
+            history = [];
+            totalDrops = 0;
+            isPlaying = false;
+            updatePlayBtn();
+
+            const cx = SIZE / 2;
+            const cy = SIZE / 2;
+            const r = SIZE * 0.4;
+
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                const x = i % SIZE;
+                const y = Math.floor(i / SIZE);
+                const dx = x - cx;
+                const dy = y - cy;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                let h = 0;
+                if (dist < r) {
+                    let fade = (r - dist) / 25;
+                    if(fade > 1) fade = 1;
+                    if(fade < 0) fade = 0;
+                    h = 50 * (fade * fade * (3 - 2 * fade));
+                    if (dist < r - 25) h = 50;
+                }
+                h += Math.random() * 2.0;
+                heightMap[i] = h;
+            }
+            saveSnapshot();
+            updateMesh();
+        }
+
+        function simulate() {
+            for(let i=0; i<fluxMap.length; i++) fluxMap[i] *= 0.7;
+
+            for (let k = 0; k < DROPS_PER_FRAME; k++) {
+                let x = Math.random() * (SIZE - 2) + 1;
+                let y = Math.random() * (SIZE - 2) + 1;
+                let dirX = 0, dirY = 0, speed = 1, water = 1, sediment = 0;
+
+                for (let step = 0; step < 50; step++) {
+                    const nx = Math.floor(x);
+                    const ny = Math.floor(y);
+                    if (nx < 0 || nx >= SIZE-1 || ny < 0 || ny >= SIZE-1) break;
+                    
+                    const idx = ny * SIZE + nx;
+                    const u = x - nx;
+                    const v = y - ny;
+
+                    const h00 = heightMap[idx];
+                    const h10 = heightMap[idx+1];
+                    const h01 = heightMap[idx+SIZE];
+                    const h11 = heightMap[idx+SIZE+1];
+
+                    const gx = (h10 - h00)*(1-v) + (h11 - h01)*v;
+                    const gy = (h01 - h00)*(1-u) + (h11 - h10)*u;
+
+                    dirX = dirX * PARAMS.inertia - gx * (1 - PARAMS.inertia);
+                    dirY = dirY * PARAMS.inertia - gy * (1 - PARAMS.inertia);
+                    
+                    let len = Math.sqrt(dirX*dirX + dirY*dirY);
+                    if (len < 0.001) {
+                        if(step === 0) {
+                            dirX = Math.random()-0.5; dirY = Math.random()-0.5; len = 1;
+                        } else { break; }
+                    }
+                    dirX /= len; dirY /= len;
+                    
+                    x += dirX; y += dirY;
+                    fluxMap[idx] += 1; 
+
+                    const nnx = Math.floor(x);
+                    const nny = Math.floor(y);
+                    if (nnx < 0 || nnx >= SIZE-1 || nny < 0 || nny >= SIZE-1) break;
+                    
+                    const nidx = nny * SIZE + nnx;
+                    const nu = x - nnx;
+                    const nv = y - nny;
+
+                    const nh00 = heightMap[nidx];
+                    const nh10 = heightMap[nidx+1];
+                    const nh01 = heightMap[nidx+SIZE];
+                    const nh11 = heightMap[nidx+SIZE+1];
+                    
+                    const newH = nh00*(1-nu)*(1-nv) + nh10*nu*(1-nv) + nh01*(1-nu)*nv + nh11*nu*nv;
+                    const oldH = h00*(1-u)*(1-v) + h10*u*(1-v) + h01*(1-u)*v + h11*u*v;
+                    
+                    const diff = newH - oldH;
+
+                    // --- 水中判定 (SEA_LEVEL = 0 との比較) ---
+                    const currentHeight = h00*(1-u)*(1-v) + h10*u*(1-v) + h01*(1-u)*v + h11*u*v;
+                    const isUnderwater = currentHeight < SEA_LEVEL;
+
+                    let capacity = Math.max(-diff * speed * water * PARAMS.capacity, PARAMS.minSlope);
+                    if (isUnderwater) capacity *= 0.2; // 水中では運搬能力激減
+
+                    let amount = 0;
+                    if (diff > 0 || sediment > capacity || isUnderwater) {
+                        // 堆積ロジック
+                        if (diff > 0) {
+                            amount = Math.min(diff, sediment);
+                        } else if (sediment > capacity) {
+                            amount = (sediment - capacity) * PARAMS.deposition;
+                        } else {
+                            // 水中での自然沈殿
+                            amount = sediment * 0.05; 
+                        }
+                        amount = Math.max(0, amount);
+                        sediment -= amount;
+                        applyHeight(idx, amount * (1-u)*(1-v));
+                        applyHeight(idx+1, amount * u*(1-v));
+                        applyHeight(idx+SIZE, amount * (1-u)*v);
+                        applyHeight(idx+SIZE+1, amount * u*v);
+                    } else {
+                        // 浸食ロジック (水中以外)
+                        amount = Math.min((capacity - sediment) * PARAMS.erosion, -diff);
+                        amount = Math.min(amount, 1.0); 
+                        sediment += amount;
+                        applyHeight(idx, -amount * (1-u)*(1-v));
+                        applyHeight(idx+1, -amount * u*(1-v));
+                        applyHeight(idx+SIZE, -amount * (1-u)*v);
+                        applyHeight(idx+SIZE+1, -amount * u*v);
+                    }
+
+                    speed = Math.sqrt(speed*speed + Math.abs(diff)*PARAMS.gravity);
+                    water *= (1 - PARAMS.evaporation);
+                    if (water < 0.01) break;
+                }
+                totalDrops++;
+            }
+            if (totalDrops % SNAPSHOT_INTERVAL === 0) saveSnapshot();
+        }
+
+        function applyHeight(i, val) {
+            if(!isFinite(val)) return;
+            heightMap[i] += val;
+            if(heightMap[i] > PARAMS.maxHeight) heightMap[i] = PARAMS.maxHeight;
+            if(heightMap[i] < PARAMS.minHeight) heightMap[i] = PARAMS.minHeight;
+        }
+
+        function updateMesh() {
+            if (!terrainMesh) return;
+            const pos = terrainMesh.geometry.attributes.position;
+            const col = terrainMesh.geometry.attributes.color;
+
+            const cGreen = new THREE.Color(0x2E8B57);
+            const cYGreen = new THREE.Color(0x9ACD32);
+            const cYellow = new THREE.Color(0xFFD700);
+            const cOrange = new THREE.Color(0xFFA500);
+            const cBrown = new THREE.Color(0x8B4513);
+            const cWater = new THREE.Color(0x00BFFF);
+            const cSand = new THREE.Color(0xE6C288);
+            
+            let maxH = 10;
+            for(let i=0; i<SIZE*SIZE; i++) {
+                if(heightMap[i] > maxH) maxH = heightMap[i];
+            }
+
+            // 海抜の最大高さ
+            const maxAltitude = Math.max(1, maxH - SEA_LEVEL);
+
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                let h = heightMap[i];
+                let flux = fluxMap[i];
+                if(isNaN(h)) h = 0;
+                
+                pos.setZ(i, h * displayScale);
+
+                const color = new THREE.Color();
+
+                // 相対色分け
+                if (h < SEA_LEVEL) {
+                    color.copy(cSand);
+                } else {
+                    const altitude = h - SEA_LEVEL;
+                    const r = Math.max(0, Math.min(1, altitude / maxAltitude));
+
+                    if (r < 0.25) color.lerpColors(cGreen, cYGreen, r/0.25);
+                    else if (r < 0.5) color.lerpColors(cYGreen, cYellow, (r-0.25)/0.25);
+                    else if (r < 0.75) color.lerpColors(cYellow, cOrange, (r-0.5)/0.25);
+                    else color.lerpColors(cOrange, cBrown, (r-0.75)/0.25);
+                }
+
+                // 川の描画：海面以上でのみ表示
+                if (flux > 5 && h >= SEA_LEVEL) {
+                    let waterAlpha = Math.min(0.8, (flux - 5) / 40);
+                    color.lerp(cWater, waterAlpha);
+                }
+
+                col.setXYZ(i, color.r, color.g, color.b);
+            }
+
+            pos.needsUpdate = true;
+            col.needsUpdate = true;
+            terrainMesh.geometry.computeVertexNormals();
+        }
+
+        function saveSnapshot() {
+            history.push({ 
+                h: new Float32Array(heightMap),
+                f: new Float32Array(fluxMap)
+            });
+            if(history.length > MAX_HISTORY) history.shift();
+            const slider = document.getElementById('history-slider');
+            slider.max = history.length - 1;
+            
+            if (!slider.disabled) {
+                document.getElementById('history-val').textContent = slider.value + " / " + slider.max;
+            }
+        }
+
+        function setupUI() {
+            const header = document.getElementById('panel-header');
+            const panel = document.getElementById('ui-panel');
+            const icon = document.getElementById('toggle-icon');
+            
+            header.onclick = () => {
+                panel.classList.toggle('collapsed');
+                if (panel.classList.contains('collapsed')) icon.textContent = "+";
+                else icon.textContent = "−";
+            };
+
+            const btnPlay = document.getElementById('toggle-play-btn');
+            btnPlay.onclick = () => {
+                isPlaying = !isPlaying;
+                updatePlayBtn();
+            };
+
+            const btnUplift = document.getElementById('toggle-uplift-btn');
+            btnUplift.onclick = () => {
+                isUpliftMode = !isUpliftMode;
+                if (isUpliftMode) {
+                    btnUplift.textContent = "スポット隆起 (クリック): ON";
+                    btnUplift.classList.add("active-uplift");
+                } else {
+                    btnUplift.textContent = "スポット隆起 (クリック): OFF";
+                    btnUplift.classList.remove("active-uplift");
+                }
+            };
+
+            // 全体隆起・沈降ボタン
+            document.getElementById('global-uplift-btn').onclick = () => {
+                applyGlobalChange(1.0); // ステップ変更: 1.0
+            };
+            document.getElementById('global-subside-btn').onclick = () => {
+                applyGlobalChange(-1.0); // ステップ変更: -1.0
+            };
+
+            document.getElementById('reset-btn').onclick = resetTerrain;
+            
+            document.getElementById('height-scale-slider').oninput = (e) => {
+                displayScale = parseFloat(e.target.value);
+                updateMesh();
+            };
+            
+            const depSlider = document.getElementById('dep-slider');
+            depSlider.oninput = (e) => {
+                PARAMS.deposition = parseFloat(e.target.value);
+                document.getElementById('dep-val').innerText = PARAMS.deposition.toFixed(2);
+            }
+            
+            const hSlider = document.getElementById('history-slider');
+            hSlider.oninput = (e) => {
+                isPlaying = false;
+                updatePlayBtn();
+                const idx = parseInt(e.target.value);
+                if(history[idx]) {
+                    heightMap.set(history[idx].h);
+                    fluxMap.set(history[idx].f);
+                    updateMesh();
+                    document.getElementById('history-val').textContent = idx + " / " + (history.length - 1);
+                }
+            };
+        }
+
+        function updatePlayBtn() {
+            const btn = document.getElementById('toggle-play-btn');
+            if(isPlaying) {
+                btn.textContent = "停止";
+                btn.classList.add('active-play');
+            } else {
+                btn.textContent = "開始";
+                btn.classList.remove('active-play');
+            }
+            const slider = document.getElementById('history-slider');
+            slider.disabled = isPlaying;
+            if(isPlaying) {
+                slider.value = slider.max;
+                document.getElementById('history-val').textContent = slider.max;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (isPlaying) {
+                simulate();
+                updateMesh();
+                document.getElementById('drop-count').textContent = totalDrops;
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('load', init);
+
+    </script>
+</body>
+</html>
+
+
