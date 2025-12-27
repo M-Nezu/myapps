@@ -805,19 +805,19 @@
             inertiaSlider.oninput = (e) => {
                 PARAMS.inertia = parseFloat(e.target.value);
                 document.getElementById('inertia-val').innerText = PARAMS.inertia.toFixed(2);
-            }
+            };
             
             const depSlider = document.getElementById('dep-slider');
             depSlider.oninput = (e) => {
                 PARAMS.deposition = parseFloat(e.target.value);
                 document.getElementById('dep-val').innerText = PARAMS.deposition.toFixed(2);
-            }
+            };
             
             const thermalSlider = document.getElementById('thermal-slider');
             thermalSlider.oninput = (e) => {
                 PARAMS.thermalErosion = parseFloat(e.target.value);
                 document.getElementById('thermal-val').innerText = PARAMS.thermalErosion.toFixed(2);
-            }
+            };
             
             const upliftPatternSelect = document.getElementById('uplift-pattern');
             upliftPatternSelect.onchange = (e) => {
