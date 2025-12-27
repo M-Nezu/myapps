@@ -822,13 +822,13 @@
             const upliftPatternSelect = document.getElementById('uplift-pattern');
             upliftPatternSelect.onchange = (e) => {
                 CONTINUOUS_UPLIFT_PARAMS.pattern = e.target.value;
-            }
+            };
             
             const upliftSpeedSlider = document.getElementById('uplift-speed-slider');
             upliftSpeedSlider.oninput = (e) => {
                 CONTINUOUS_UPLIFT_PARAMS.speed = parseFloat(e.target.value);
                 document.getElementById('uplift-speed-val').innerText = CONTINUOUS_UPLIFT_PARAMS.speed.toFixed(2);
-            }
+            };
             
             const hSlider = document.getElementById('history-slider');
             hSlider.oninput = (e) => {
