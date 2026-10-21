@@ -8,7 +8,7 @@
 const SHEET_NAME = 'Marks';
 const HEADERS = ['id', 'title', 'memo', 'shape', 'color', 'lat', 'lng', 'createdAt', 'updatedAt'];
 const NUM_COLS = HEADERS.length;
-const SHAPES = ['small-circle', 'house'];
+const SHAPES = ['small-circle', 'small-triangle', 'house'];
 const COLORS = ['#ffffff', '#9ca3af', '#111827'];
 const MAX_TITLE_LENGTH = 100;
 const MAX_MEMO_LENGTH = 2000;
