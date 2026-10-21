@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>esqmap</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { height: 100%; margin: 0; overscroll-behavior: none; }
+    body { -webkit-tap-highlight-color: transparent; font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+    #map { position: fixed; inset: 0; background: #f3f4f6; }
+
+    /* 中央十字カーソル */
+    #crosshair {
+      position: fixed; left: 50%; top: 50%; width: 28px; height: 28px;
+      transform: translate(-50%, -50%); pointer-events: none; z-index: 500;
+    }
+    #crosshair::before {
+      content: ""; position: absolute; inset: 0; border: 2.5px solid #ef4444; border-radius: 9999px;
+      box-shadow: 0 0 0 1.5px rgba(255,255,255,.9), inset 0 0 0 1.5px rgba(255,255,255,.9);
+    }
+    #crosshair::after {
+      content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px;
+      transform: translate(-50%, -50%); background: #ef4444; border-radius: 9999px;
+    }
+
+    /* マーク */
+    .esq-icon { background: none; border: none; }
+    .esq-mark { position: relative; }
+    .esq-mark svg { display: block; overflow: visible; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+    .esq-mark.is-pending { opacity: .55; }
+    .esq-label {
+      position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+      margin-left: 3px; white-space: nowrap; font-size: 12px; font-weight: 700; line-height: 1;
+      color: #111827; pointer-events: auto;
+      text-shadow:
+        -1.5px -1.5px 0 #fff, 0 -1.5px 0 #fff, 1.5px -1.5px 0 #fff,
+        -1.5px 0 0 #fff, 1.5px 0 0 #fff,
+        -1.5px 1.5px 0 #fff, 0 1.5px 0 #fff, 1.5px 1.5px 0 #fff,
+        0 0 3px #fff;
+    }
+    .esq-mark.is-small .esq-label { margin-left: 0; }
+
+    /* 現在地 */
+    .esq-here { background: none; border: none; }
+    .esq-here div {
+      width: 16px; height: 16px; border-radius: 9999px; background: #3b82f6;
+      border: 3px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.2), 0 0 8px rgba(59,130,246,.8);
+    }
+
+    .leaflet-bottom { bottom: calc(76px + env(safe-area-inset-bottom)); }
+    .leaflet-popup-content { margin: 12px 14px; min-width: 180px; }
+    .leaflet-container { font-family: inherit; }
+
+    .spinner {
+      width: 18px; height: 18px; border-radius: 9999px; border: 2.5px solid currentColor;
+      border-right-color: transparent; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .drawer { transform: translateX(100%); transition: transform .25s ease; }
+    .drawer.open { transform: translateX(0); }
+    .safe-top { padding-top: env(safe-area-inset-top); }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-900 select-none">
+  <div id="map"></div>
+  <div id="crosshair" aria-hidden="true"></div>
+
+  <!-- ヘッダー: 中央座標・同期状態・一覧ボタン -->
+  <header class="safe-top fixed top-0 inset-x-0 z-[1000] pointer-events-none">
+    <div class="m-2 flex items-center gap-2 rounded-xl bg-white/90 backdrop-blur shadow px-3 py-2 pointer-events-auto">
+      <span class="font-bold text-blue-600 text-sm shrink-0">esqmap</span>
+      <div class="flex-1 min-w-0 text-center">
+        <div id="coords" class="font-mono text-xs sm:text-sm tabular-nums truncate">--</div>
+      </div>
+      <div id="sync-status" class="flex items-center gap-1 text-xs text-gray-500 shrink-0" title="同期状態"></div>
+      <button id="btn-list" type="button" aria-label="マーク一覧"
+              class="shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 p-2">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- 右側フローティングボタン -->
+  <div class="fixed right-2 z-[1000] flex flex-col gap-2" style="top: calc(68px + env(safe-area-inset-top));">
+    <button id="btn-opacity" type="button" aria-label="地図の濃さ切替"
+            class="w-12 h-12 rounded-full bg-white shadow flex flex-col items-center justify-center active:bg-gray-100">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
+      <span id="opacity-label" class="text-[10px] leading-none mt-0.5">濃</span>
+    </button>
+    <button id="btn-locate" type="button" aria-label="現在地へ移動"
+            class="w-12 h-12 rounded-full bg-white shadow flex items-center justify-center active:bg-gray-100 text-blue-600">
+      <svg id="locate-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+      <span id="locate-spinner" class="spinner hidden"></span>
+    </button>
+  </div>
+
+  <!-- 下部: マークボタン -->
+  <div class="safe-bottom fixed bottom-0 inset-x-0 z-[1000] flex justify-center pointer-events-none">
+    <button id="btn-add" type="button"
+            class="pointer-events-auto mb-3 px-6 h-14 rounded-full bg-blue-600 active:bg-blue-700 text-white font-bold shadow-lg flex items-center gap-2 disabled:opacity-50">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      中央カーソル地点にマーク
+    </button>
+  </div>
+
+  <!-- トースト -->
+  <div id="toasts" class="fixed inset-x-0 z-[3000] flex flex-col items-center gap-2 pointer-events-none px-4"
+       style="bottom: calc(84px + env(safe-area-inset-bottom));"></div>
+
+  <!-- 一覧ドロワー -->
+  <div id="drawer-backdrop" class="hidden fixed inset-0 z-[1500] bg-black/30"></div>
+  <aside id="drawer" class="drawer safe-top safe-bottom fixed top-0 right-0 bottom-0 z-[1600] w-[85vw] max-w-sm bg-white shadow-2xl flex flex-col" aria-label="マーク一覧">
+    <div class="flex items-center gap-2 px-4 py-3 border-b">
+      <h2 class="font-bold flex-1">マーク一覧 <span id="list-count" class="text-sm text-gray-500"></span></h2>
+      <button id="btn-reload" type="button" class="rounded-lg px-3 py-1.5 text-sm bg-gray-100 active:bg-gray-200">再読込</button>
+      <button id="btn-drawer-close" type="button" aria-label="閉じる" class="rounded-lg p-1.5 active:bg-gray-100">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <ul id="mark-list" class="flex-1 overflow-y-auto divide-y"></ul>
+  </aside>
+
+  <!-- 登録/編集モーダル -->
+  <div id="modal" class="hidden fixed inset-0 z-[2000] bg-black/40 flex items-end sm:items-center justify-center">
+    <form id="mark-form" class="safe-bottom w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto select-text" novalidate>
+      <div class="px-5 pt-4 pb-2 flex items-center">
+        <h2 id="modal-title" class="font-bold text-lg flex-1">新規マーク</h2>
+        <span id="modal-coords" class="font-mono text-xs text-gray-500"></span>
+      </div>
+      <div class="px-5 pb-4 space-y-4">
+        <label class="block">
+          <span class="text-sm font-medium text-gray-700">タイトル</span>
+          <input id="f-title" type="text" maxlength="100" autocomplete="off" placeholder="例: 集合場所"
+                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium text-gray-700">メモ</span>
+          <textarea id="f-memo" rows="3" maxlength="2000"
+                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        </label>
+        <fieldset>
+          <legend class="text-sm font-medium text-gray-700">形状</legend>
+          <div id="f-shapes" class="mt-1 grid grid-cols-2 gap-2"></div>
+        </fieldset>
+        <fieldset>
+          <legend class="text-sm font-medium text-gray-700">色</legend>
+          <div id="f-colors" class="mt-1 grid grid-cols-3 gap-2"></div>
+        </fieldset>
+      </div>
+      <div class="px-5 pb-5 flex gap-2">
+        <button id="btn-delete" type="button" class="hidden rounded-lg px-4 py-2.5 text-red-600 bg-red-50 active:bg-red-100 font-medium">削除</button>
+        <div class="flex-1"></div>
+        <button id="btn-cancel" type="button" class="rounded-lg px-4 py-2.5 bg-gray-100 active:bg-gray-200 font-medium">キャンセル</button>
+        <button id="btn-save" type="submit" class="rounded-lg px-5 py-2.5 bg-blue-600 active:bg-blue-700 text-white font-bold">保存</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ローディング -->
+  <div id="loading" class="fixed inset-0 z-[4000] bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+    <span class="spinner text-blue-600" style="width:36px;height:36px;border-width:4px"></span>
+    <p id="loading-text" class="text-sm text-gray-600">マークを読み込み中…</p>
+    <button id="btn-retry" type="button" class="hidden rounded-lg px-4 py-2 bg-blue-600 text-white font-bold">再試行</button>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // -----------------------------------------------------------------------
+    // 定数
+    // -----------------------------------------------------------------------
+    const GSI_PALE_URL = 'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png';
+    const GSI_ATTRIBUTION = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>';
+    const DEFAULT_CENTER = [35.681236, 139.767125];
+    const DEFAULT_ZOOM = 15;
+    const FOCUS_ZOOM = 17;
+    const BORDER_COLOR = '#2563eb';
+    const SHAPES = [
+      { id: 'small-circle', label: '小丸' },
+      { id: 'house', label: '家' }
+    ];
+    const COLORS = [
+      { id: '#ffffff', label: '白' },
+      { id: '#9ca3af', label: '灰' },
+      { id: '#111827', label: '黒' }
+    ];
+    const DEFAULT_FIELDS = { shape: 'small-circle', color: '#ffffff' };
+
+    // -----------------------------------------------------------------------
+    // 状態
+    // -----------------------------------------------------------------------
+    const state = {
+      map: null,
+      tileLayer: null,
+      faded: false,
+      hereMarker: null,
+      marks: new Map(),      // key(クライアント内一意) -> mark
+      seq: 0,
+      syncCount: 0,          // 未完了のサーバー同期数
+      modal: null            // { mode: 'create'|'edit', key?, lat, lng }
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    // GAS 外 (ローカルでの HTML 単体確認) 用のインメモリモック
+    if (!(window.google && google.script && google.script.run)) installDevMock();
+
+    // -----------------------------------------------------------------------
+    // 初期化
+    // -----------------------------------------------------------------------
+    function boot() {
+      state.map = L.map('map', {
+        center: DEFAULT_CENTER,
+        zoom: DEFAULT_ZOOM,
+        minZoom: 5,
+        maxZoom: 20,
+        zoomControl: false
+      });
+      L.control.zoom({ position: 'bottomright' }).addTo(state.map);
+      state.tileLayer = L.tileLayer(GSI_PALE_URL, {
+        attribution: GSI_ATTRIBUTION,
+        minZoom: 5,
+        maxNativeZoom: 18,
+        maxZoom: 20,
+        opacity: 1.0
+      }).addTo(state.map);
+      state.map.attributionControl.setPrefix(false);
+
+      state.map.on('move', updateCoords);
+      updateCoords();
+
+      buildFormOptions();
+      bindUi();
+      renderSyncStatus();
+      loadMarks();
+    }
+
+    function loadMarks() {
+      showLoading('マークを読み込み中…');
+      google.script.run
+        .withSuccessHandler(initMap)
+        .withFailureHandler(function (err) {
+          showLoading('読み込みに失敗しました: ' + errorMessage(err), true);
+        })
+        .getAllMarks();
+    }
+
+    /** getAllMarks() の成功ハンドラ。マークを描画してローディングを消す。 */
+    function initMap(marks) {
+      (marks || []).forEach(function (data) {
+        addMarkToMap(newMark(data, true));
+      });
+      renderList();
+      const all = Array.from(state.marks.values());
+      if (all.length) {
+        const bounds = L.latLngBounds(all.map(function (m) { return [m.lat, m.lng]; }));
+        state.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+      }
+      hideLoading();
+    }
+
+    // -----------------------------------------------------------------------
+    // マークモデル
+    // -----------------------------------------------------------------------
+    function newMark(data, fromServer) {
+      const mark = {
+        key: 'k' + (++state.seq),
+        id: fromServer ? data.id : null,
+        title: data.title || '',
+        memo: data.memo || '',
+        shape: data.shape || DEFAULT_FIELDS.shape,
+        color: data.color || DEFAULT_FIELDS.color,
+        lat: Number(data.lat),
+        lng: Number(data.lng),
+        createdAt: data.createdAt || '',
+        updatedAt: data.updatedAt || '',
+        confirmed: fromServer ? Object.assign({}, data) : null, // 最後にサーバーで確定した状態
+        queue: Promise.resolve(),
+        pending: 0,
+        removed: false,
+        marker: null
+      };
+      state.marks.set(mark.key, mark);
+      return mark;
+    }
+
+    function findMarkById(id) {
+      for (const m of state.marks.values()) if (m.id === id) return m;
+      return null;
+    }
+
+    function applyFields(mark, data) {
+      ['title', 'memo', 'shape', 'color', 'lat', 'lng', 'createdAt', 'updatedAt'].forEach(function (k) {
+        if (data[k] !== undefined) mark[k] = data[k];
+      });
+    }
+
+    function visibleMarks() {
+      return Array.from(state.marks.values())
+        .filter(function (m) { return !m.removed; })
+        .sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+    }
+
+    // -----------------------------------------------------------------------
+    // 地図描画
+    // -----------------------------------------------------------------------
+    function shapeSvg(shape, color, scale) {
+      const s = scale || 1;
+      if (shape === 'house') {
+        const w = 26 * s;
+        return '<svg width="' + w + '" height="' + w + '" viewBox="0 0 24 24">' +
+          '<path d="M12 2.5 L22 11.5 H19 V21.5 H5 V11.5 H2 Z" fill="' + color + '" stroke="' + BORDER_COLOR +
+          '" stroke-width="2" stroke-linejoin="round"/></svg>';
+      }
+      const w = 14 * s;
+      return '<svg width="' + w + '" height="' + w + '" viewBox="0 0 14 14">' +
+        '<circle cx="7" cy="7" r="5" fill="' + color + '" stroke="' + BORDER_COLOR + '" stroke-width="2.5"/></svg>';
+    }
+
+    function markIcon(mark) {
+      const small = mark.shape !== 'house';
+      const size = small ? 14 : 26;
+      const cls = 'esq-mark ' + (small ? 'is-small' : 'is-house') + (mark.id ? '' : ' is-pending');
+      const html = '<div class="' + cls + '" style="width:' + size + 'px;height:' + size + 'px">' +
+        shapeSvg(mark.shape, mark.color) +
+        (mark.title ? '<span class="esq-label">' + escapeHtml(mark.title) + '</span>' : '') +
+        '</div>';
+      return L.divIcon({
+        className: 'esq-icon',
+        html: html,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -size / 2]
+      });
+    }
+
+    function addMarkToMap(mark) {
+      const marker = L.marker([mark.lat, mark.lng], { icon: markIcon(mark), keyboard: false });
+      marker.markKey = mark.key;
+      marker.markId = mark.id;
+      marker.bindPopup(function () { return popupContent(mark); }, { autoPanPadding: [40, 90] });
+      marker.addTo(state.map);
+      mark.marker = marker;
+    }
+
+    function refreshMarker(mark) {
+      if (!mark.marker) return;
+      mark.marker.markId = mark.id;
+      mark.marker.setLatLng([mark.lat, mark.lng]);
+      mark.marker.setIcon(markIcon(mark));
+      const el = mark.marker.getElement();
+      if (el) el.dataset.markId = mark.id || '';
+      if (mark.marker.isPopupOpen()) mark.marker.setPopupContent(popupContent(mark));
+    }
+
+    function removeMarkerFromMap(mark) {
+      if (mark.marker) {
+        mark.marker.closePopup();
+        state.map.removeLayer(mark.marker);
+      }
+    }
+
+    function popupContent(mark) {
+      const root = document.createElement('div');
+      root.className = 'space-y-2';
+
+      const title = document.createElement('div');
+      title.className = 'font-bold text-base break-words';
+      title.textContent = mark.title || '(無題)';
+      root.appendChild(title);
+
+      if (mark.memo) {
+        const memo = document.createElement('div');
+        memo.className = 'text-sm text-gray-700 whitespace-pre-wrap break-words max-h-40 overflow-y-auto';
+        memo.textContent = mark.memo;
+        root.appendChild(memo);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'text-xs text-gray-500 font-mono';
+      meta.textContent = formatLatLng(mark.lat, mark.lng) + (mark.pending ? '  同期中…' : '');
+      root.appendChild(meta);
+
+      const buttons = document.createElement('div');
+      buttons.className = 'flex gap-2 pt-1';
+      buttons.appendChild(makeButton('編集', 'flex-1 rounded-md bg-blue-600 text-white py-1.5 font-bold', function () {
+        state.map.closePopup();
+        openModal('edit', mark);
+      }));
+      buttons.appendChild(makeButton('削除', 'rounded-md bg-red-50 text-red-600 px-3 py-1.5 font-medium', function () {
+        if (confirm('「' + (mark.title || '(無題)') + '」を削除しますか？')) deleteMarkFlow(mark);
+      }));
+      root.appendChild(buttons);
+      return root;
+    }
+
+    // -----------------------------------------------------------------------
+    // サーバー同期 (Optimistic UI + マーク単位の直列キュー)
+    // -----------------------------------------------------------------------
+    function callGas(name) {
+      const args = Array.prototype.slice.call(arguments, 1);
+      return new Promise(function (resolve, reject) {
+        const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+        runner[name].apply(runner, args);
+      });
+    }
+
+    /**
+     * マークごとに同期処理を直列化する。作成完了 (id 払い出し) 前の更新・削除も
+     * 作成完了を待ってから実行される。全処理完了時にはサーバー確定状態へ揃える。
+     */
+    function enqueue(mark, task) {
+      mark.pending++;
+      state.syncCount++;
+      renderSyncStatus();
+      mark.queue = mark.queue
+        .then(task)
+        .catch(function (err) { console.error(err); })
+        .then(function () {
+          mark.pending--;
+          state.syncCount--;
+          if (mark.pending === 0 && !mark.removed && mark.confirmed) {
+            applyFields(mark, mark.confirmed);
+          }
+          if (!mark.removed) refreshMarker(mark);
+          renderList();
+          renderSyncStatus();
+        });
+    }
+
+    function createMarkFlow(fields, lat, lng) {
+      const now = new Date().toISOString();
+      const mark = newMark(Object.assign({}, fields, { lat: lat, lng: lng, createdAt: now, updatedAt: now }), false);
+      addMarkToMap(mark);
+      renderList();
+      const payload = Object.assign({}, fields, { lat: lat, lng: lng });
+
+      enqueue(mark, function () {
+        return callGas('createMark', payload).then(function (saved) {
+          // サーバーが払い出した id をクライアントのオブジェクトとマーカーにバインド
+          mark.id = saved.id;
+          mark.createdAt = saved.createdAt;
+          mark.confirmed = saved;
+          if (mark.marker) mark.marker.markId = saved.id;
+        }, function (err) {
+          mark.removed = true;
+          removeMarkerFromMap(mark);
+          state.marks.delete(mark.key);
+          toast('マークの保存に失敗しました: ' + errorMessage(err), 'error');
+        });
+      });
+      return mark;
+    }
+
+    function updateMarkFlow(mark, fields) {
+      applyFields(mark, Object.assign({}, fields, { updatedAt: new Date().toISOString() }));
+      refreshMarker(mark);
+      renderList();
+
+      enqueue(mark, function () {
+        if (!mark.id || mark.removed) return;
+        return callGas('updateMark', mark.id, fields).then(function (saved) {
+          mark.confirmed = saved;
+        }, function (err) {
+          if (isNotFound(err)) {
+            mark.removed = true;
+            removeMarkerFromMap(mark);
+            state.marks.delete(mark.key);
+            toast('このマークは他の端末で削除されています', 'error');
+          } else {
+            toast('更新に失敗しました: ' + errorMessage(err), 'error');
+          }
+        });
+      });
+    }
+
+    function deleteMarkFlow(mark) {
+      mark.removed = true;
+      removeMarkerFromMap(mark);
+      renderList();
+
+      enqueue(mark, function () {
+        if (!mark.id) { state.marks.delete(mark.key); return; }
+        return callGas('deleteMark', mark.id).then(function () {
+          state.marks.delete(mark.key);
+        }, function (err) {
+          mark.removed = false;
+          if (mark.confirmed) applyFields(mark, mark.confirmed);
+          addMarkToMap(mark);
+          toast('削除に失敗しました: ' + errorMessage(err), 'error');
+        });
+      });
+    }
+
+    /** サーバーの最新状態を取得して反映する (他端末の変更の取り込み)。 */
+    function reloadFromServer() {
+      if (state.syncCount > 0) {
+        toast('同期中です。完了後に再読込してください');
+        return;
+      }
+      const btn = $('btn-reload');
+      btn.disabled = true;
+      btn.textContent = '読込中…';
+      callGas('getAllMarks').then(function (list) {
+        if (state.syncCount > 0) return;
+        const seen = new Set();
+        list.forEach(function (data) {
+          seen.add(data.id);
+          const mark = findMarkById(data.id);
+          if (mark) {
+            mark.confirmed = data;
+            applyFields(mark, data);
+            refreshMarker(mark);
+          } else {
+            addMarkToMap(newMark(data, true));
+          }
+        });
+        Array.from(state.marks.values()).forEach(function (mark) {
+          if (mark.id && !seen.has(mark.id)) {
+            mark.removed = true;
+            removeMarkerFromMap(mark);
+            state.marks.delete(mark.key);
+          }
+        });
+        renderList();
+        toast('最新の状態に更新しました');
+      }, function (err) {
+        toast('再読込に失敗しました: ' + errorMessage(err), 'error');
+      }).then(function () {
+        btn.disabled = false;
+        btn.textContent = '再読込';
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // UI
+    // -----------------------------------------------------------------------
+    function bindUi() {
+      $('btn-add').addEventListener('click', function () {
+        const c = state.map.getCenter();
+        openModal('create', null, c.lat, c.lng);
+      });
+      $('btn-opacity').addEventListener('click', toggleOpacity);
+      $('btn-locate').addEventListener('click', locate);
+      $('btn-list').addEventListener('click', openDrawer);
+      $('btn-drawer-close').addEventListener('click', closeDrawer);
+      $('drawer-backdrop').addEventListener('click', closeDrawer);
+      $('btn-reload').addEventListener('click', reloadFromServer);
+      $('btn-retry').addEventListener('click', loadMarks);
+
+      $('btn-cancel').addEventListener('click', closeModal);
+      $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeModal(); });
+      $('mark-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+        saveModal();
+      });
+      $('btn-delete').addEventListener('click', function () {
+        const mark = state.modal && state.marks.get(state.modal.key);
+        if (!mark) return closeModal();
+        if (confirm('「' + (mark.title || '(無題)') + '」を削除しますか？')) {
+          closeModal();
+          deleteMarkFlow(mark);
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (!$('modal').classList.contains('hidden')) closeModal();
+        else closeDrawer();
+      });
+    }
+
+    function updateCoords() {
+      const c = state.map.getCenter();
+      $('coords').textContent = formatLatLng(c.lat, c.lng);
+    }
+
+    function toggleOpacity() {
+      state.faded = !state.faded;
+      state.tileLayer.setOpacity(state.faded ? 0.4 : 1.0);
+      $('opacity-label').textContent = state.faded ? '淡' : '濃';
+    }
+
+    function locate() {
+      if (!navigator.geolocation) {
+        toast('この端末では位置情報を利用できません', 'error');
+        return;
+      }
+      setLocating(true);
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        setLocating(false);
+        const latlng = [pos.coords.latitude, pos.coords.longitude];
+        if (!state.hereMarker) {
+          state.hereMarker = L.marker(latlng, {
+            icon: L.divIcon({ className: 'esq-here', html: '<div></div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
+            interactive: false,
+            keyboard: false,
+            zIndexOffset: -1000
+          }).addTo(state.map);
+        } else {
+          state.hereMarker.setLatLng(latlng);
+        }
+        state.map.setView(latlng, Math.max(state.map.getZoom(), 16));
+      }, function (err) {
+        setLocating(false);
+        const msg = err.code === err.PERMISSION_DENIED ? '位置情報の利用が許可されていません'
+          : err.code === err.TIMEOUT ? '位置情報の取得がタイムアウトしました'
+          : '現在地を取得できませんでした';
+        toast(msg, 'error');
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
+    }
+
+    function setLocating(on) {
+      $('locate-icon').classList.toggle('hidden', on);
+      $('locate-spinner').classList.toggle('hidden', !on);
+      $('btn-locate').disabled = on;
+    }
+
+    function renderSyncStatus() {
+      const el = $('sync-status');
+      if (state.syncCount > 0) {
+        el.innerHTML = '<span class="spinner text-blue-600" style="width:12px;height:12px;border-width:2px"></span>';
+        el.appendChild(document.createTextNode(String(state.syncCount)));
+        el.title = '同期中 (' + state.syncCount + ')';
+      } else {
+        el.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
+        el.title = '同期済み';
+      }
+    }
+
+    // ---- 一覧ドロワー ----
+    function openDrawer() {
+      renderList();
+      $('drawer').classList.add('open');
+      $('drawer-backdrop').classList.remove('hidden');
+    }
+
+    function closeDrawer() {
+      $('drawer').classList.remove('open');
+      $('drawer-backdrop').classList.add('hidden');
+    }
+
+    function renderList() {
+      const list = $('mark-list');
+      const marks = visibleMarks();
+      $('list-count').textContent = '(' + marks.length + ')';
+      list.textContent = '';
+      if (!marks.length) {
+        const li = document.createElement('li');
+        li.className = 'p-6 text-center text-sm text-gray-500';
+        li.textContent = 'マークはまだありません';
+        list.appendChild(li);
+        return;
+      }
+      marks.forEach(function (mark) {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'w-full text-left px-4 py-3 flex items-center gap-3 active:bg-gray-100';
+        btn.addEventListener('click', function () { focusMark(mark); });
+
+        const icon = document.createElement('span');
+        icon.className = 'w-7 flex justify-center shrink-0';
+        icon.innerHTML = shapeSvg(mark.shape, mark.color);
+        btn.appendChild(icon);
+
+        const body = document.createElement('span');
+        body.className = 'flex-1 min-w-0';
+        const t = document.createElement('span');
+        t.className = 'block font-medium truncate';
+        t.textContent = mark.title || '(無題)';
+        body.appendChild(t);
+        const sub = document.createElement('span');
+        sub.className = 'block text-xs text-gray-500 truncate';
+        sub.textContent = mark.memo ? mark.memo.split('\n')[0] : formatLatLng(mark.lat, mark.lng);
+        body.appendChild(sub);
+        btn.appendChild(body);
+
+        if (mark.pending) {
+          const s = document.createElement('span');
+          s.className = 'spinner text-blue-500 shrink-0';
+          s.style.cssText = 'width:12px;height:12px;border-width:2px';
+          s.title = '同期中';
+          btn.appendChild(s);
+        }
+        li.appendChild(btn);
+        list.appendChild(li);
+      });
+    }
+
+    function focusMark(mark) {
+      closeDrawer();
+      if (!mark.marker || mark.removed) return;
+      state.map.setView([mark.lat, mark.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM));
+      setTimeout(function () { if (mark.marker && !mark.removed) mark.marker.openPopup(); }, 300);
+    }
+
+    // ---- モーダル ----
+    function buildFormOptions() {
+      const shapes = $('f-shapes');
+      SHAPES.forEach(function (s) {
+        shapes.appendChild(optionLabel('shape', s.id, s.label, shapeSvg(s.id, '#ffffff')));
+      });
+      const colors = $('f-colors');
+      COLORS.forEach(function (c) {
+        colors.appendChild(optionLabel('color', c.id, c.label,
+          '<span class="inline-block w-5 h-5 rounded-full border-2" style="background:' + c.id + ';border-color:' + BORDER_COLOR + '"></span>'));
+      });
+    }
+
+    function optionLabel(name, value, text, iconHtml) {
+      const label = document.createElement('label');
+      label.className = 'cursor-pointer';
+      label.innerHTML =
+        '<input type="radio" class="peer sr-only" name="' + name + '" value="' + value + '">' +
+        '<span class="flex items-center justify-center gap-2 rounded-lg border-2 border-gray-200 py-2 ' +
+        'peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400">' +
+        '<span class="w-7 flex justify-center">' + iconHtml + '</span><span class="text-sm">' + text + '</span></span>';
+      return label;
+    }
+
+    function openModal(mode, mark, lat, lng) {
+      const src = mark || DEFAULT_FIELDS;
+      state.modal = mode === 'edit'
+        ? { mode: 'edit', key: mark.key, lat: mark.lat, lng: mark.lng }
+        : { mode: 'create', lat: lat, lng: lng };
+      $('modal-title').textContent = mode === 'edit' ? 'マークを編集' : '新規マーク';
+      $('modal-coords').textContent = formatLatLng(state.modal.lat, state.modal.lng);
+      $('f-title').value = mark ? mark.title : '';
+      $('f-memo').value = mark ? mark.memo : '';
+      setRadio('shape', src.shape);
+      setRadio('color', src.color);
+      $('btn-delete').classList.toggle('hidden', mode !== 'edit');
+      $('modal').classList.remove('hidden');
+      if (mode === 'create') setTimeout(function () { $('f-title').focus(); }, 50);
+    }
+
+    function closeModal() {
+      $('modal').classList.add('hidden');
+      document.activeElement && document.activeElement.blur && document.activeElement.blur();
+      state.modal = null;
+    }
+
+    function saveModal() {
+      const m = state.modal;
+      if (!m) return;
+      const fields = {
+        title: $('f-title').value.trim(),
+        memo: $('f-memo').value,
+        shape: getRadio('shape') || DEFAULT_FIELDS.shape,
+        color: getRadio('color') || DEFAULT_FIELDS.color
+      };
+      closeModal();
+      if (m.mode === 'create') {
+        createMarkFlow(fields, m.lat, m.lng);
+      } else {
+        const mark = state.marks.get(m.key);
+        if (!mark || mark.removed) {
+          toast('このマークは既に削除されています', 'error');
+          return;
+        }
+        updateMarkFlow(mark, fields);
+      }
+    }
+
+    function setRadio(name, value) {
+      document.querySelectorAll('input[name="' + name + '"]').forEach(function (el) {
+        el.checked = el.value === value;
+      });
+    }
+
+    function getRadio(name) {
+      const el = document.querySelector('input[name="' + name + '"]:checked');
+      return el ? el.value : null;
+    }
+
+    // ---- ローディング / トースト ----
+    function showLoading(text, failed) {
+      $('loading').classList.remove('hidden');
+      $('loading-text').textContent = text;
+      $('btn-retry').classList.toggle('hidden', !failed);
+      $('loading').querySelector('.spinner').classList.toggle('hidden', !!failed);
+    }
+
+    function hideLoading() {
+      $('loading').classList.add('hidden');
+    }
+
+    function toast(message, type) {
+      const el = document.createElement('div');
+      el.className = 'pointer-events-auto max-w-sm rounded-lg px-4 py-2 text-sm shadow-lg text-white transition-opacity duration-300 ' +
+        (type === 'error' ? 'bg-red-600' : 'bg-gray-800/90');
+      el.textContent = message;
+      $('toasts').appendChild(el);
+      setTimeout(function () {
+        el.style.opacity = '0';
+        setTimeout(function () { el.remove(); }, 300);
+      }, type === 'error' ? 4500 : 2200);
+    }
+
+    // -----------------------------------------------------------------------
+    // ユーティリティ
+    // -----------------------------------------------------------------------
+    function makeButton(text, className, onClick) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = className;
+      b.textContent = text;
+      b.addEventListener('click', onClick);
+      return b;
+    }
+
+    function formatLatLng(lat, lng) {
+      return Number(lat).toFixed(6) + ', ' + Number(lng).toFixed(6);
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function errorMessage(err) {
+      const msg = err && err.message ? err.message : String(err);
+      return msg.replace(/^(Exception|Error):\s*/, '').replace(/^[A-Z_]+:\s*/, '');
+    }
+
+    function isNotFound(err) {
+      return /NOT_FOUND/.test(err && err.message ? err.message : String(err));
+    }
+
+    function installDevMock() {
+      console.warn('[esqmap] google.script.run が無いため開発用インメモリモックで動作します');
+      const db = [];
+      const clone = function (v) { return JSON.parse(JSON.stringify(v)); };
+      const uuid = function () {
+        return (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random().toString(16).slice(2);
+      };
+      const impl = {
+        getAllMarks: function () { return db; },
+        createMark: function (data) {
+          const now = new Date().toISOString();
+          const mark = Object.assign({ id: uuid() }, data, { createdAt: now, updatedAt: now });
+          db.push(mark);
+          return mark;
+        },
+        updateMark: function (id, data) {
+          const mark = db.find(function (m) { return m.id === id; });
+          if (!mark) throw new Error('NOT_FOUND: マークが見つかりません (id=' + id + ')');
+          Object.assign(mark, data, { updatedAt: new Date().toISOString() });
+          return mark;
+        },
+        deleteMark: function (id) {
+          const i = db.findIndex(function (m) { return m.id === id; });
+          if (i >= 0) db.splice(i, 1);
+          return { id: id, deleted: i >= 0 };
+        }
+      };
+      const makeRunner = function (onSuccess, onFailure) {
+        const runner = {
+          withSuccessHandler: function (fn) { return makeRunner(fn, onFailure); },
+          withFailureHandler: function (fn) { return makeRunner(onSuccess, fn); }
+        };
+        Object.keys(impl).forEach(function (name) {
+          runner[name] = function () {
+            const args = clone(Array.prototype.slice.call(arguments));
+            setTimeout(function () {
+              try {
+                const result = clone(impl[name].apply(null, args));
+                if (onSuccess) onSuccess(result);
+              } catch (e) {
+                if (onFailure) onFailure(e);
+              }
+            }, 300 + Math.random() * 600);
+          };
+        });
+        return runner;
+      };
+      window.google = { script: { run: makeRunner(null, null) } };
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+  })();
+  </script>
+</body>
+</html>
