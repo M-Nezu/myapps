@@ -88,8 +88,8 @@
     </div>
   </header>
 
-  <!-- 右側フローティングボタン -->
-  <div class="fixed right-2 z-[1000] flex flex-col gap-2" style="top: calc(68px + env(safe-area-inset-top));">
+  <!-- 初期化時に Leaflet コントロールへ移動するボタン -->
+  <div class="hidden">
     <button id="btn-opacity" type="button" aria-label="地図の濃さ切替"
             class="w-12 h-12 rounded-full bg-white shadow flex flex-col items-center justify-center active:bg-gray-100">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
@@ -197,6 +197,8 @@
       { id: '#111827', label: '黒' }
     ];
     const DEFAULT_FIELDS = { shape: 'small-circle', color: '#ffffff' };
+    const TITLE_COLLATOR = new Intl.Collator('ja', { numeric: true });
+    const LIST_SHAPE_ORDER = ['house', 'small-triangle', 'small-circle'];
 
     // -----------------------------------------------------------------------
     // 状態
@@ -243,6 +245,8 @@
       };
       state.tileLayer = baseLayers['Google map (標準)'].addTo(state.map);
       L.control.layers(baseLayers, null, { position: 'bottomleft' }).addTo(state.map);
+      addMapButton('btn-opacity', 'bottomleft');
+      addMapButton('btn-locate', 'bottomright');
       state.map.attributionControl.setPrefix(false);
 
       state.map.on('baselayerchange', function (event) {
@@ -256,6 +260,17 @@
       bindUi();
       renderSyncStatus();
       loadMarks();
+    }
+
+    function addMapButton(id, position) {
+      const control = L.control({ position: position });
+      control.onAdd = function () {
+        const button = $(id);
+        L.DomEvent.disableClickPropagation(button);
+        L.DomEvent.disableScrollPropagation(button);
+        return button;
+      };
+      control.addTo(state.map);
     }
 
     function loadMarks() {
@@ -321,7 +336,12 @@
     function visibleMarks() {
       return Array.from(state.marks.values())
         .filter(function (m) { return !m.removed; })
-        .sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+        .sort(function (a, b) {
+          return TITLE_COLLATOR.compare(a.title, b.title) ||
+            COLORS.findIndex(function (c) { return c.id === a.color; }) -
+              COLORS.findIndex(function (c) { return c.id === b.color; }) ||
+            LIST_SHAPE_ORDER.indexOf(a.shape) - LIST_SHAPE_ORDER.indexOf(b.shape);
+        });
     }
 
     // -----------------------------------------------------------------------
