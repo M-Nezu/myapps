@@ -2,14 +2,17 @@
  * esqmap - 地図マーキングアプリ (GAS Webアプリ版) バックエンド
  *
  * データベース: スプレッドシートの `Marks` シート (無ければ1番目のシート)
- * カラム: id | title | memo | shape | color | lat | lng | createdAt | updatedAt
+ * 新しいカラムは既存の9列の末尾に追加する。
  */
 
 const SHEET_NAME = 'Marks';
-const HEADERS = ['id', 'title', 'memo', 'shape', 'color', 'lat', 'lng', 'createdAt', 'updatedAt'];
+const HEADERS = ['id', 'title', 'memo', 'shape', 'color', 'lat', 'lng', 'createdAt', 'updatedAt',
+  'letter', 'region', 'class', 'type', 'rank'];
 const NUM_COLS = HEADERS.length;
 const SHAPES = ['small-circle', 'small-triangle', 'house'];
 const COLORS = ['#ffffff', '#9ca3af', '#111827'];
+const TYPES = ['Z', 'K', '-'];
+const RANKS = ['0', '1', '2', '3'];
 const MAX_TITLE_LENGTH = 100;
 const MAX_MEMO_LENGTH = 2000;
 const LOCK_TIMEOUT_MS = 10000;
@@ -34,13 +37,16 @@ function doGet(e) {
  * @return {Object[]} マークの配列
  */
 function getAllMarks() {
-  const sheet = getSheet_();
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
-  const values = sheet.getRange(2, 1, lastRow - 1, NUM_COLS).getValues();
-  return values
-    .filter(function (row) { return row[0] !== '' && row[0] !== null; })
-    .map(rowToMark_);
+  return withLock_(function () {
+    const sheet = getSheet_();
+    ensureHeader_(sheet);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return [];
+    const values = sheet.getRange(2, 1, lastRow - 1, NUM_COLS).getValues();
+    return values
+      .filter(function (row) { return row[0] !== '' && row[0] !== null; })
+      .map(rowToMark_);
+  });
 }
 
 /**
@@ -60,6 +66,11 @@ function createMark(data) {
       memo: fields.memo,
       shape: fields.shape,
       color: fields.color,
+      letter: fields.letter,
+      region: fields.region,
+      class: fields.class,
+      type: fields.type,
+      rank: fields.rank,
       lat: fields.lat,
       lng: fields.lng,
       createdAt: now,
@@ -82,6 +93,7 @@ function updateMark(id, data) {
   const fields = sanitize_(data, true);
   return withLock_(function () {
     const sheet = getSheet_();
+    ensureHeader_(sheet);
     const row = findRowById_(sheet, markId);
     if (row < 0) throw new Error('NOT_FOUND: マークが見つかりません (id=' + markId + ')');
     const range = sheet.getRange(row, 1, 1, NUM_COLS);
@@ -106,6 +118,7 @@ function deleteMark(id) {
   const markId = sanitizeId_(id);
   return withLock_(function () {
     const sheet = getSheet_();
+    ensureHeader_(sheet);
     const row = findRowById_(sheet, markId);
     if (row < 0) return { id: markId, deleted: false };
     sheet.deleteRow(row);
@@ -144,7 +157,7 @@ function setup() {
       sheet = ss.insertSheet(SHEET_NAME, 0);
     }
   }
-  ensureHeader_(sheet);
+  withLock_(function () { ensureHeader_(sheet); });
   Logger.log('セットアップ完了: %s', ss.getUrl());
 }
 
@@ -165,9 +178,34 @@ function getSheet_() {
 }
 
 function ensureHeader_(sheet) {
-  if (sheet.getLastRow() > 0) return;
-  sheet.getRange(1, 1, 1, NUM_COLS).setValues([HEADERS]).setFontWeight('bold');
-  sheet.setFrozenRows(1);
+  if (sheet.getLastRow() === 0) {
+    if (sheet.getMaxColumns() < NUM_COLS) sheet.insertColumnsAfter(sheet.getMaxColumns(), NUM_COLS - sheet.getMaxColumns());
+    sheet.getRange(1, 1, 1, NUM_COLS).setValues([HEADERS]).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    SpreadsheetApp.flush();
+    return;
+  }
+  const lastColumn = sheet.getLastColumn();
+  if (sheet.getMaxColumns() < 9) sheet.insertColumnsAfter(sheet.getMaxColumns(), 9 - sheet.getMaxColumns());
+  const headers = sheet.getRange(1, 1, 1, Math.max(lastColumn, 9)).getValues()[0];
+  for (let i = 0; i < 9; i++) {
+    if (headers[i] !== HEADERS[i]) throw new Error('INVALID: シートのヘッダーが不正です (' + HEADERS[i] + ')');
+  }
+  for (let i = 9; i < NUM_COLS; i++) {
+    if (headers[i] && headers[i] !== HEADERS[i]) {
+      throw new Error('INVALID: シートのヘッダーが不正です (' + HEADERS[i] + ')');
+    }
+    if (!headers[i] && i < lastColumn &&
+        sheet.getLastRow() > 1 &&
+        sheet.getRange(2, i + 1, sheet.getLastRow() - 1, 1).getValues().some(function (row) { return row[0] !== ''; })) {
+      throw new Error('INVALID: ヘッダーのない列にデータがあります (' + HEADERS[i] + ')');
+    }
+  }
+  if (sheet.getMaxColumns() < NUM_COLS) sheet.insertColumnsAfter(sheet.getMaxColumns(), NUM_COLS - sheet.getMaxColumns());
+  for (let i = 9; i < NUM_COLS; i++) {
+    if (!headers[i]) sheet.getRange(1, i + 1).setValue(HEADERS[i]).setFontWeight('bold');
+  }
+  SpreadsheetApp.flush();
 }
 
 function withLock_(fn) {
@@ -197,6 +235,10 @@ function findRowById_(sheet, id) {
 function rowToMark_(row) {
   const shape = toStr_(row[3]);
   const color = toStr_(row[4]).toLowerCase();
+  const type = toStr_(row[12]) || '-';
+  const rank = toStr_(row[13]) || '0';
+  if (TYPES.indexOf(type) < 0) throw new Error('INVALID: シートの type が不正です (id=' + toStr_(row[0]) + ')');
+  if (RANKS.indexOf(rank) < 0) throw new Error('INVALID: シートの rank が不正です (id=' + toStr_(row[0]) + ')');
   return {
     id: toStr_(row[0]),
     title: toStr_(row[1]),
@@ -206,7 +248,12 @@ function rowToMark_(row) {
     lat: Number(row[5]),
     lng: Number(row[6]),
     createdAt: toStr_(row[7]),
-    updatedAt: toStr_(row[8])
+    updatedAt: toStr_(row[8]),
+    letter: toStr_(row[9]),
+    region: toStr_(row[10]),
+    class: toStr_(row[11]),
+    type: type,
+    rank: rank
   };
 }
 
@@ -221,7 +268,12 @@ function markToRow_(mark) {
     mark.lat,
     mark.lng,
     asText_(mark.createdAt),
-    asText_(mark.updatedAt)
+    asText_(mark.updatedAt),
+    asText_(mark.letter),
+    asText_(mark.region),
+    asText_(mark.class),
+    asText_(mark.type),
+    asText_(mark.rank)
   ];
 }
 
@@ -254,6 +306,19 @@ function sanitize_(data, partial) {
 
   if (has('title') || !partial) out.title = toStr_(data.title).trim().slice(0, MAX_TITLE_LENGTH);
   if (has('memo') || !partial) out.memo = toStr_(data.memo).slice(0, MAX_MEMO_LENGTH);
+  ['letter', 'region', 'class'].forEach(function (key) {
+    if (has(key) || !partial) out[key] = toStr_(data[key]).trim();
+  });
+  if (data.type !== undefined || !partial) {
+    const type = toStr_(data.type).trim() || '-';
+    if (TYPES.indexOf(type) < 0) throw new Error('INVALID: type が不正です');
+    out.type = type;
+  }
+  if (data.rank !== undefined || !partial) {
+    const rank = toStr_(data.rank).trim() || '0';
+    if (RANKS.indexOf(rank) < 0) throw new Error('INVALID: rank が不正です');
+    out.rank = rank;
+  }
 
   if (has('shape') || !partial) {
     if (SHAPES.indexOf(data.shape) < 0) throw new Error('INVALID: shape が不正です');

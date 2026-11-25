@@ -67,6 +67,35 @@
     .drawer.open { transform: translateX(0); }
     .safe-top { padding-top: env(safe-area-inset-top); }
     .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+    .form-row { display: flex; gap: .4rem; align-items: end; }
+    .form-field { min-width: 0; display: block; }
+    .form-field span { display: block; font-size: .75rem; color: #374151; }
+    .form-field input, .form-field textarea {
+      box-sizing: border-box; width: 100%; min-width: 0; border: 1px solid #d1d5db;
+      border-radius: .5rem; padding: .35rem; font-size: 16px; background: white;
+    }
+    .choice-group { min-width: 0; flex: 1; }
+    .choice-group legend { font-size: .75rem; color: #374151; }
+    .choices { display: flex; gap: .25rem; }
+    .choice { flex: 1; min-width: 0; position: relative; cursor: pointer; }
+    .choice input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .choice-face {
+      display: flex; align-items: center; justify-content: center; height: 38px;
+      border: 2px solid #d1d5db; border-radius: .5rem; background: white;
+      font-size: 16px; font-weight: 600;
+    }
+    .choice input:checked + .choice-face { box-shadow: 0 0 0 2px #111827; }
+    .choice input:checked + .choice-face::after {
+      content: "✓"; position: absolute; top: -4px; right: -3px;
+      width: 14px; height: 14px; border-radius: 50%; background: #111827;
+      color: white; font: bold 11px/14px sans-serif; text-align: center;
+    }
+    .choice input:focus-visible + .choice-face { outline: 2px solid #2563eb; outline-offset: 3px; }
+    .modal-actions { display: flex; gap: .25rem; }
+    .modal-actions button {
+      flex: 1; min-width: 0; white-space: nowrap; padding: .6rem .125rem;
+      font-size: clamp(12px, 3.8vw, 14px);
+    }
   </style>
 </head>
 <body class="bg-gray-100 text-gray-900 select-none">
@@ -93,7 +122,7 @@
     <button id="btn-opacity" type="button" aria-label="地図の濃さ切替"
             class="w-12 h-12 rounded-full bg-white shadow flex flex-col items-center justify-center active:bg-gray-100">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
-      <span id="opacity-label" class="text-[10px] leading-none mt-0.5">濃</span>
+      <span id="opacity-label" class="text-[10px] leading-none mt-0.5">淡</span>
     </button>
     <button id="btn-locate" type="button" aria-label="現在地へ移動"
             class="w-12 h-12 rounded-full bg-white shadow flex items-center justify-center active:bg-gray-100 text-blue-600">
@@ -109,6 +138,10 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       中央カーソル地点にマーク
     </button>
+    <div id="position-actions" class="hidden pointer-events-auto mb-3 flex gap-2">
+      <button id="btn-position-cancel" type="button" class="px-4 h-14 rounded-full bg-white font-bold shadow-lg">キャンセル</button>
+      <button id="btn-position-confirm" type="button" class="px-6 h-14 rounded-full bg-blue-600 text-white font-bold shadow-lg">位置を確定</button>
+    </div>
   </div>
 
   <!-- トースト -->
@@ -118,9 +151,14 @@
   <!-- 一覧ドロワー -->
   <div id="drawer-backdrop" class="hidden fixed inset-0 z-[1500] bg-black/30"></div>
   <aside id="drawer" class="drawer safe-top safe-bottom fixed top-0 right-0 bottom-0 z-[1600] w-[85vw] max-w-sm bg-white shadow-2xl flex flex-col" aria-label="マーク一覧">
-    <div class="flex items-center gap-2 px-4 py-3 border-b">
-      <h2 class="font-bold flex-1">マーク一覧 <span id="list-count" class="text-sm text-gray-500"></span></h2>
-      <button id="btn-reload" type="button" class="rounded-lg px-3 py-1.5 text-sm bg-gray-100 active:bg-gray-200">再読込</button>
+    <div class="flex items-center gap-1.5 px-3 py-3 border-b">
+      <h2 class="font-bold text-sm flex-1 min-w-0 truncate">マーク一覧 <span id="list-count" class="text-gray-500"></span></h2>
+      <button id="list-sort" type="button" aria-label="登録順" aria-pressed="false" title="並び順: ナンバー・データ順"
+              class="shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 p-2">
+        <svg id="sort-title-icon" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3v17m-4-4 4 4 4-4"/><text x="1" y="9" stroke="none" fill="currentColor" font-size="9" font-weight="bold">1</text><text x="1" y="20" stroke="none" fill="currentColor" font-size="9" font-weight="bold">A</text></svg>
+        <svg id="sort-created-icon" aria-hidden="true" class="hidden" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </button>
+      <button id="btn-reload" type="button" class="shrink-0 rounded-lg px-2 py-1.5 text-sm bg-gray-100 active:bg-gray-200">再読込</button>
       <button id="btn-drawer-close" type="button" aria-label="閉じる" class="rounded-lg p-1.5 active:bg-gray-100">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
@@ -135,31 +173,28 @@
         <h2 id="modal-title" class="font-bold text-lg flex-1">新規マーク</h2>
         <span id="modal-coords" class="font-mono text-xs text-gray-500"></span>
       </div>
-      <div class="px-5 pb-4 space-y-4">
-        <label class="block">
-          <span class="text-sm font-medium text-gray-700">タイトル</span>
-          <input id="f-title" type="text" maxlength="100" autocomplete="off" placeholder="例: 集合場所"
-                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </label>
-        <fieldset>
-          <legend class="text-sm font-medium text-gray-700">形状</legend>
-          <div id="f-shapes" class="mt-1 grid grid-cols-3 gap-2"></div>
-        </fieldset>
-        <fieldset>
-          <legend class="text-sm font-medium text-gray-700">色</legend>
-          <div id="f-colors" class="mt-1 grid grid-cols-3 gap-2"></div>
-        </fieldset>
-        <label class="block">
-          <span class="text-sm font-medium text-gray-700">メモ</span>
-          <textarea id="f-memo" rows="3" maxlength="2000"
-                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-        </label>
+      <div class="px-4 pb-3 space-y-2">
+        <div class="form-row">
+          <label class="form-field" style="flex: 4"><span>ナンバー</span><input id="f-title" type="text" size="4" maxlength="100" autocomplete="off"></label>
+          <label class="form-field" style="flex: 2"><span>かな</span><input id="f-letter" type="text" size="1" autocomplete="off"></label>
+          <label class="form-field" style="flex: 5"><span>地域</span><input id="f-region" type="text" size="5" autocomplete="off"></label>
+          <label class="form-field" style="flex: 3"><span>分類</span><input id="f-class" type="text" size="3" autocomplete="off"></label>
+        </div>
+        <div class="form-row">
+          <fieldset class="choice-group"><legend>種類</legend><div id="f-shape" class="choices"></div></fieldset>
+          <fieldset class="choice-group"><legend>色</legend><div id="f-color" class="choices"></div></fieldset>
+        </div>
+        <div class="form-row">
+          <fieldset class="choice-group"><legend>型</legend><div id="f-type" class="choices"></div></fieldset>
+          <fieldset class="choice-group"><legend>ランク</legend><div id="f-rank" class="choices"></div></fieldset>
+        </div>
+        <label class="form-field"><span>メモ</span><textarea id="f-memo" rows="2" maxlength="2000"></textarea></label>
       </div>
-      <div class="px-5 pb-5 flex gap-2">
-        <button id="btn-delete" type="button" class="hidden rounded-lg px-4 py-2.5 text-red-600 bg-red-50 active:bg-red-100 font-medium">削除</button>
-        <div class="flex-1"></div>
-        <button id="btn-cancel" type="button" class="rounded-lg px-4 py-2.5 bg-gray-100 active:bg-gray-200 font-medium">キャンセル</button>
-        <button id="btn-save" type="submit" class="rounded-lg px-5 py-2.5 bg-blue-600 active:bg-blue-700 text-white font-bold">保存</button>
+      <div class="modal-actions px-4 pb-5">
+        <button id="btn-delete" type="button" class="hidden rounded-lg text-red-600 bg-red-50 active:bg-red-100 font-medium">削除</button>
+        <button id="btn-position" type="button" class="hidden rounded-lg bg-gray-100 font-medium">位置修正</button>
+        <button id="btn-cancel" type="button" class="rounded-lg bg-gray-100 active:bg-gray-200 font-medium">キャンセル</button>
+        <button id="btn-save" type="submit" class="rounded-lg bg-blue-600 active:bg-blue-700 text-white font-bold">保存</button>
       </div>
     </form>
   </div>
@@ -185,20 +220,14 @@
     const DEFAULT_CENTER = [35.681236, 139.767125];
     const DEFAULT_ZOOM = 15;
     const FOCUS_ZOOM = 17;
-    const BORDER_COLOR = '#2563eb';
-    const SHAPES = [
-      { id: 'small-circle', label: '小丸' },
-      { id: 'small-triangle', label: '小三角' },
-      { id: 'house', label: '家' }
-    ];
+    const BORDER_COLORS = { '0': '#4b5563', '1': '#2563eb', '2': '#16a34a', '3': '#f97316' };
     const COLORS = [
       { id: '#ffffff', label: '白' },
       { id: '#9ca3af', label: '灰' },
       { id: '#111827', label: '黒' }
     ];
-    const DEFAULT_FIELDS = { shape: 'small-circle', color: '#ffffff' };
+    const DEFAULT_FIELDS = { shape: 'small-circle', color: '#ffffff', type: '-', rank: '0' };
     const TITLE_COLLATOR = new Intl.Collator('ja', { numeric: true });
-    const LIST_SHAPE_ORDER = ['house', 'small-triangle', 'small-circle'];
 
     // -----------------------------------------------------------------------
     // 状態
@@ -206,11 +235,14 @@
     const state = {
       map: null,
       tileLayer: null,
-      faded: false,
+      faded: true,
+      listSort: 'title',
+      selectedMarkKey: null,
       hereMarker: null,
       marks: new Map(),      // key(クライアント内一意) -> mark
       seq: 0,
       syncCount: 0,          // 未完了のサーバー同期数
+      positioning: false,
       modal: null            // { mode: 'create'|'edit', key?, lat, lng }
     };
 
@@ -236,14 +268,14 @@
         subdomains: '0123',
         minZoom: 5,
         maxZoom: 20,
-        opacity: 1.0
+        opacity: state.faded ? 0.4 : 1.0
       };
       const baseLayers = {
-        'Google map (標準)': L.tileLayer(GOOGLE_STANDARD_URL, tileOptions),
         'Google map (施設アイコン無し)': L.tileLayer(GOOGLE_NO_POI_URL, tileOptions),
+        'Google map (標準)': L.tileLayer(GOOGLE_STANDARD_URL, tileOptions),
         'Google map (衛星写真)': L.tileLayer(GOOGLE_SATELLITE_URL, tileOptions)
       };
-      state.tileLayer = baseLayers['Google map (標準)'].addTo(state.map);
+      state.tileLayer = baseLayers['Google map (施設アイコン無し)'].addTo(state.map);
       L.control.layers(baseLayers, null, { position: 'bottomleft' }).addTo(state.map);
       addMapButton('btn-opacity', 'bottomleft');
       addMapButton('btn-locate', 'bottomright');
@@ -305,6 +337,11 @@
         key: 'k' + (++state.seq),
         id: fromServer ? data.id : null,
         title: data.title || '',
+        letter: data.letter || '',
+        region: data.region || '',
+        class: data.class || '',
+        type: data.type || '-',
+        rank: String(data.rank || '0'),
         memo: data.memo || '',
         shape: data.shape || DEFAULT_FIELDS.shape,
         color: data.color || DEFAULT_FIELDS.color,
@@ -328,7 +365,7 @@
     }
 
     function applyFields(mark, data) {
-      ['title', 'memo', 'shape', 'color', 'lat', 'lng', 'createdAt', 'updatedAt'].forEach(function (k) {
+      ['title', 'letter', 'region', 'class', 'type', 'rank', 'memo', 'shape', 'color', 'lat', 'lng', 'createdAt', 'updatedAt'].forEach(function (k) {
         if (data[k] !== undefined) mark[k] = data[k];
       });
     }
@@ -337,32 +374,35 @@
       return Array.from(state.marks.values())
         .filter(function (m) { return !m.removed; })
         .sort(function (a, b) {
+          if (state.listSort === 'created') return TITLE_COLLATOR.compare(b.createdAt, a.createdAt);
           return TITLE_COLLATOR.compare(a.title, b.title) ||
             COLORS.findIndex(function (c) { return c.id === a.color; }) -
               COLORS.findIndex(function (c) { return c.id === b.color; }) ||
-            LIST_SHAPE_ORDER.indexOf(a.shape) - LIST_SHAPE_ORDER.indexOf(b.shape);
+            TITLE_COLLATOR.compare(a.letter, b.letter) ||
+            TITLE_COLLATOR.compare(a.type, b.type);
         });
     }
 
     // -----------------------------------------------------------------------
     // 地図描画
     // -----------------------------------------------------------------------
-    function shapeSvg(shape, color, scale) {
+    function shapeSvg(shape, color, rank, scale) {
       const s = scale || 1;
+      const border = BORDER_COLORS[rank] || BORDER_COLORS['0'];
       if (shape === 'house') {
         const w = 26 * s;
         return '<svg width="' + w + '" height="' + w + '" viewBox="0 0 24 24">' +
-          '<path d="M12 2 L22 10 V22 H2 V10 Z" fill="' + color + '" stroke="' + BORDER_COLOR +
+          '<path d="M12 2 L22 10 V22 H2 V10 Z" fill="' + color + '" stroke="' + border +
           '" stroke-width="2" stroke-linejoin="round"/></svg>';
       }
       const w = 14 * s;
       if (shape === 'small-triangle') {
         return '<svg width="' + w + '" height="' + w + '" viewBox="0 0 14 14">' +
-          '<path d="M7 1.5 L12.2 10.5 H1.8 Z" fill="' + color + '" stroke="' + BORDER_COLOR +
+          '<path d="M7 1.5 L12.2 10.5 H1.8 Z" fill="' + color + '" stroke="' + border +
           '" stroke-width="2" stroke-linejoin="round"/></svg>';
       }
       return '<svg width="' + w + '" height="' + w + '" viewBox="0 0 14 14">' +
-        '<circle cx="7" cy="7" r="5" fill="' + color + '" stroke="' + BORDER_COLOR + '" stroke-width="2.5"/></svg>';
+        '<circle cx="7" cy="7" r="5" fill="' + color + '" stroke="' + border + '" stroke-width="2.5"/></svg>';
     }
 
     function markIcon(mark) {
@@ -370,7 +410,7 @@
       const size = small ? 14 : 26;
       const cls = 'esq-mark ' + (small ? 'is-small' : 'is-house') + (mark.id ? '' : ' is-pending');
       const html = '<div class="' + cls + '" style="width:' + size + 'px;height:' + size + 'px">' +
-        shapeSvg(mark.shape, mark.color) +
+        shapeSvg(mark.shape, mark.color, mark.rank) +
         (mark.title ? '<span class="esq-label">' + escapeHtml(mark.title) + '</span>' : '') +
         '</div>';
       return L.divIcon({
@@ -386,6 +426,7 @@
       const marker = L.marker([mark.lat, mark.lng], { icon: markIcon(mark), keyboard: false });
       marker.markKey = mark.key;
       marker.markId = mark.id;
+      marker.on('popupopen', function () { state.selectedMarkKey = mark.key; });
       marker.bindPopup(function () { return popupContent(mark); }, { autoPanPadding: [40, 90] });
       marker.addTo(state.map);
       mark.marker = marker;
@@ -412,30 +453,33 @@
       const root = document.createElement('div');
       root.className = 'space-y-2';
 
-      const title = document.createElement('div');
-      title.className = 'font-bold text-base break-words';
+      const details = document.createElement('div');
+      details.className = 'text-sm break-words';
+      const title = document.createElement('strong');
       title.textContent = mark.title || '(無題)';
-      root.appendChild(title);
+      details.appendChild(title);
+      details.appendChild(document.createTextNode(' ' + [mark.letter, mark.region, mark.class, mark.type].filter(Boolean).join(' ')));
+      root.appendChild(details);
 
-      if (mark.memo) {
-        const memo = document.createElement('div');
-        memo.className = 'text-sm text-gray-700 whitespace-pre-wrap break-words max-h-40 overflow-y-auto';
-        memo.textContent = mark.memo;
-        root.appendChild(memo);
-      }
+      const memo = document.createElement('div');
+      memo.className = 'text-sm text-gray-700 whitespace-pre-wrap break-words max-h-40 overflow-y-auto';
+      memo.textContent = mark.memo || ' ';
+      root.appendChild(memo);
 
       const meta = document.createElement('div');
-      meta.className = 'text-xs text-gray-500 font-mono';
-      meta.textContent = formatLatLng(mark.lat, mark.lng) + (mark.pending ? '  同期中…' : '');
+      meta.className = 'text-xs text-gray-500';
+      meta.textContent = '登録日: ' + formatDate(mark.createdAt) + (mark.pending ? '  同期中…' : '');
       root.appendChild(meta);
 
       const buttons = document.createElement('div');
       buttons.className = 'flex gap-2 pt-1';
       buttons.appendChild(makeButton('編集', 'flex-1 rounded-md bg-blue-600 text-white py-1.5 font-bold', function () {
+        if (state.positioning) return;
         state.map.closePopup();
         openModal('edit', mark);
       }));
       buttons.appendChild(makeButton('削除', 'rounded-md bg-red-50 text-red-600 px-3 py-1.5 font-medium', function () {
+        if (state.positioning) return;
         if (confirm('「' + (mark.title || '(無題)') + '」を削除しますか？')) deleteMarkFlow(mark);
       }));
       root.appendChild(buttons);
@@ -471,6 +515,11 @@
             applyFields(mark, mark.confirmed);
           }
           if (!mark.removed) refreshMarker(mark);
+          if (state.modal && state.modal.key === mark.key && !state.positioning) {
+            state.modal.lat = mark.lat;
+            state.modal.lng = mark.lng;
+            $('modal-coords').textContent = formatLatLng(mark.lat, mark.lng);
+          }
           renderList();
           renderSyncStatus();
         });
@@ -594,9 +643,13 @@
       $('btn-drawer-close').addEventListener('click', closeDrawer);
       $('drawer-backdrop').addEventListener('click', closeDrawer);
       $('btn-reload').addEventListener('click', reloadFromServer);
+      $('list-sort').addEventListener('click', toggleListSort);
       $('btn-retry').addEventListener('click', loadMarks);
 
       $('btn-cancel').addEventListener('click', closeModal);
+      $('btn-position').addEventListener('click', startPositioning);
+      $('btn-position-cancel').addEventListener('click', function () { finishPositioning(false); });
+      $('btn-position-confirm').addEventListener('click', function () { finishPositioning(true); });
       $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeModal(); });
       $('mark-form').addEventListener('submit', function (e) {
         e.preventDefault();
@@ -613,6 +666,7 @@
       document.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
         if (!$('modal').classList.contains('hidden')) closeModal();
+        else if (state.positioning) finishPositioning(false);
         else closeDrawer();
       });
     }
@@ -676,10 +730,22 @@
     }
 
     // ---- 一覧ドロワー ----
+    function toggleListSort() {
+      state.listSort = state.listSort === 'title' ? 'created' : 'title';
+      const created = state.listSort === 'created';
+      $('list-sort').setAttribute('aria-pressed', String(created));
+      $('list-sort').title = '並び順: ' + (created ? '登録順' : 'ナンバー・データ順');
+      $('sort-title-icon').classList.toggle('hidden', created);
+      $('sort-created-icon').classList.toggle('hidden', !created);
+      renderList();
+      scrollToSelectedMark();
+    }
+
     function openDrawer() {
       renderList();
       $('drawer').classList.add('open');
       $('drawer-backdrop').classList.remove('hidden');
+      scrollToSelectedMark();
     }
 
     function closeDrawer() {
@@ -689,6 +755,7 @@
 
     function renderList() {
       const list = $('mark-list');
+      const scrollTop = list.scrollTop;
       const marks = visibleMarks();
       $('list-count').textContent = '(' + marks.length + ')';
       list.textContent = '';
@@ -701,6 +768,7 @@
       }
       marks.forEach(function (mark) {
         const li = document.createElement('li');
+        li.dataset.markKey = mark.key;
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'w-full text-left px-4 py-3 flex items-center gap-3 active:bg-gray-100';
@@ -708,18 +776,18 @@
 
         const icon = document.createElement('span');
         icon.className = 'w-7 flex justify-center shrink-0';
-        icon.innerHTML = shapeSvg(mark.shape, mark.color);
+        icon.innerHTML = shapeSvg(mark.shape, mark.color, mark.rank);
         btn.appendChild(icon);
 
         const body = document.createElement('span');
         body.className = 'flex-1 min-w-0';
         const t = document.createElement('span');
-        t.className = 'block font-medium truncate';
+        t.className = 'block font-bold truncate';
         t.textContent = mark.title || '(無題)';
         body.appendChild(t);
         const sub = document.createElement('span');
         sub.className = 'block text-xs text-gray-500 truncate';
-        sub.textContent = mark.memo ? mark.memo.split('\n')[0] : formatLatLng(mark.lat, mark.lng);
+        sub.textContent = [mark.letter, mark.region, mark.class, mark.type, mark.memo.replace(/\s+/g, ' ')].filter(Boolean).join(' ');
         body.appendChild(sub);
         btn.appendChild(body);
 
@@ -733,37 +801,73 @@
         li.appendChild(btn);
         list.appendChild(li);
       });
+      list.scrollTop = scrollTop;
+    }
+
+    function scrollToSelectedMark() {
+      const list = $('mark-list');
+      const row = Array.from(list.children).find(function (child) {
+        return child.dataset.markKey === state.selectedMarkKey;
+      });
+      if (!row) return;
+      const listRect = list.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      if (rowRect.top < listRect.top) list.scrollTop += rowRect.top - listRect.top;
+      else if (rowRect.bottom > listRect.bottom) list.scrollTop += rowRect.bottom - listRect.bottom;
     }
 
     function focusMark(mark) {
       closeDrawer();
       if (!mark.marker || mark.removed) return;
+      state.selectedMarkKey = mark.key;
       state.map.setView([mark.lat, mark.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM));
       setTimeout(function () { if (mark.marker && !mark.removed) mark.marker.openPopup(); }, 300);
     }
 
     // ---- モーダル ----
     function buildFormOptions() {
-      const shapes = $('f-shapes');
-      SHAPES.forEach(function (s) {
-        shapes.appendChild(optionLabel('shape', s.id, s.label, shapeSvg(s.id, '#ffffff')));
-      });
-      const colors = $('f-colors');
-      COLORS.forEach(function (c) {
-        colors.appendChild(optionLabel('color', c.id, c.label,
-          '<span class="inline-block w-5 h-5 rounded-full border-2" style="background:' + c.id + ';border-color:' + BORDER_COLOR + '"></span>'));
+      [
+        { name: 'shape', options: [
+          { value: 'small-circle', label: '小丸' },
+          { value: 'small-triangle', label: '小三角' },
+          { value: 'house', label: '家' }
+        ] },
+        { name: 'color', options: COLORS.map(function (color) { return { value: color.id, label: color.label }; }) },
+        { name: 'type', options: ['-', 'Z', 'K'].map(function (value) { return { value: value, label: value }; }) },
+        { name: 'rank', options: ['0', '1', '2', '3'].map(function (value) { return { value: value, label: 'ランク' + value }; }) }
+      ].forEach(function (group) {
+        group.options.forEach(function (option) {
+          const label = document.createElement('label');
+          label.className = 'choice';
+          const input = document.createElement('input');
+          input.type = 'radio';
+          input.name = group.name;
+          input.value = option.value;
+          input.setAttribute('aria-label', option.label);
+          const face = document.createElement('span');
+          face.className = 'choice-face';
+          face.setAttribute('aria-hidden', 'true');
+          if (group.name === 'shape') face.innerHTML = shapeSvg(option.value, '#ffffff', '0');
+          else if (group.name === 'color') face.style.backgroundColor = option.value;
+          else if (group.name === 'rank') face.style.borderColor = BORDER_COLORS[option.value];
+          else face.textContent = option.label;
+          label.appendChild(input);
+          label.appendChild(face);
+          $('f-' + group.name).appendChild(label);
+        });
       });
     }
 
-    function optionLabel(name, value, text, iconHtml) {
-      const label = document.createElement('label');
-      label.className = 'cursor-pointer';
-      label.innerHTML =
-        '<input type="radio" class="peer sr-only" name="' + name + '" value="' + value + '">' +
-        '<span class="flex items-center justify-center gap-2 rounded-lg border-2 border-gray-200 py-2 ' +
-        'peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-400">' +
-        '<span class="w-7 flex justify-center">' + iconHtml + '</span><span class="text-sm">' + text + '</span></span>';
-      return label;
+    function setChoice(name, value) {
+      document.querySelectorAll('input[name="' + name + '"]').forEach(function (input) {
+        input.checked = input.value === value;
+      });
+    }
+
+    function getChoice(name) {
+      const input = document.querySelector('input[name="' + name + '"]:checked');
+      if (!input) throw new Error('選択されていない項目があります: ' + name);
+      return input.value;
     }
 
     function openModal(mode, mark, lat, lng) {
@@ -774,10 +878,16 @@
       $('modal-title').textContent = mode === 'edit' ? 'マークを編集' : '新規マーク';
       $('modal-coords').textContent = formatLatLng(state.modal.lat, state.modal.lng);
       $('f-title').value = mark ? mark.title : '';
+      $('f-letter').value = mark ? mark.letter : '';
+      $('f-region').value = mark ? mark.region : '';
+      $('f-class').value = mark ? mark.class : '';
+      setChoice('type', src.type || '-');
+      setChoice('rank', src.rank || '0');
       $('f-memo').value = mark ? mark.memo : '';
-      setRadio('shape', src.shape);
-      setRadio('color', src.color);
+      setChoice('shape', src.shape);
+      setChoice('color', src.color);
       $('btn-delete').classList.toggle('hidden', mode !== 'edit');
+      $('btn-position').classList.toggle('hidden', mode !== 'edit');
       $('modal').classList.remove('hidden');
       if (mode === 'create') setTimeout(function () { $('f-title').focus(); }, 50);
     }
@@ -788,14 +898,59 @@
       state.modal = null;
     }
 
+    function startPositioning() {
+      const mark = state.modal && state.marks.get(state.modal.key);
+      if (!mark || mark.removed) {
+        closeModal();
+        toast('このマークは既に削除されています', 'error');
+        return;
+      }
+      document.activeElement.blur();
+      state.positioning = true;
+      $('modal').classList.add('hidden');
+      $('btn-add').classList.add('hidden');
+      $('btn-list').disabled = true;
+      $('position-actions').classList.remove('hidden');
+      state.map.closePopup();
+      state.map.setView([mark.lat, mark.lng], state.map.getZoom());
+      toast('地図を動かし、中央カーソルで位置を指定してください');
+    }
+
+    function finishPositioning(confirmPosition) {
+      const modal = state.modal;
+      const mark = modal && state.marks.get(modal.key);
+      state.positioning = false;
+      $('btn-add').classList.remove('hidden');
+      $('btn-list').disabled = false;
+      $('position-actions').classList.add('hidden');
+      if (!mark || mark.removed) {
+        closeModal();
+        toast('このマークは既に削除されています', 'error');
+        return;
+      }
+      if (confirmPosition) {
+        const center = state.map.getCenter();
+        modal.lat = center.lat;
+        modal.lng = center.lng;
+        updateMarkFlow(mark, { lat: center.lat, lng: center.lng });
+      }
+      $('modal-coords').textContent = formatLatLng(modal.lat, modal.lng);
+      $('modal').classList.remove('hidden');
+    }
+
     function saveModal() {
       const m = state.modal;
       if (!m) return;
       const fields = {
         title: $('f-title').value.trim(),
+        letter: $('f-letter').value.trim(),
+        region: $('f-region').value.trim(),
+        class: $('f-class').value.trim(),
+        type: getChoice('type'),
+        rank: getChoice('rank'),
         memo: $('f-memo').value,
-        shape: getRadio('shape') || DEFAULT_FIELDS.shape,
-        color: getRadio('color') || DEFAULT_FIELDS.color
+        shape: getChoice('shape'),
+        color: getChoice('color')
       };
       closeModal();
       if (m.mode === 'create') {
@@ -808,17 +963,6 @@
         }
         updateMarkFlow(mark, fields);
       }
-    }
-
-    function setRadio(name, value) {
-      document.querySelectorAll('input[name="' + name + '"]').forEach(function (el) {
-        el.checked = el.value === value;
-      });
-    }
-
-    function getRadio(name) {
-      const el = document.querySelector('input[name="' + name + '"]:checked');
-      return el ? el.value : null;
     }
 
     // ---- ローディング / トースト ----
@@ -859,6 +1003,12 @@
 
     function formatLatLng(lat, lng) {
       return Number(lat).toFixed(6) + ', ' + Number(lng).toFixed(6);
+    }
+
+    function formatDate(value) {
+      if (!value) return '不明';
+      const date = new Date(value);
+      return isNaN(date.getTime()) ? value : date.toLocaleString('ja-JP');
     }
 
     function escapeHtml(s) {
